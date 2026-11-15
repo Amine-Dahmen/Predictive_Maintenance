@@ -43,7 +43,7 @@ jobs:
             type=ref,event=tag
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
       - name: Construction (image locale pour l'analyse)
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ${{ matrix.component }}
           load: true
@@ -57,7 +57,7 @@ jobs:
             --severity CRITICAL --ignore-unfixed --exit-code 1 "$IMAGE:scan"
       - name: Publication (SBOM + provenance)
         if: env.PUBLISH == 'true'
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ${{ matrix.component }}
           push: true
