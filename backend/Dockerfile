@@ -1,5 +1,5 @@
 # API + passerelle MQTT. Au démarrage : migrations, compte directeur initial, serveur.
-FROM node:22-alpine
+FROM node:26-alpine
 ENV NODE_ENV=production
 WORKDIR /app
 COPY package*.json ./
