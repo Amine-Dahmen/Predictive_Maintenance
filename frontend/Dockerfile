@@ -6,7 +6,7 @@ RUN npm ci --ignore-scripts
 COPY . .
 RUN npx ng build --configuration production
 
-FROM nginxinc/nginx-unprivileged:1.29-alpine
+FROM nginxinc/nginx-unprivileged:1.31-alpine
 # correctifs de sécurité des paquets de l'image de base (ex. brotli-libs, CVE critique corrigée)
 USER root
 RUN apk upgrade --no-cache
