@@ -29,7 +29,7 @@ jobs:
         options: >-
           --health-cmd "pg_isready -U maint" --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: npm, cache-dependency-path: backend/package-lock.json }
       - run: npm ci --ignore-scripts
@@ -44,7 +44,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults: { run: { working-directory: frontend } }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: npm, cache-dependency-path: frontend/package-lock.json }
       - run: npm ci --ignore-scripts
@@ -55,7 +55,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults: { run: { working-directory: mobile } }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: subosito/flutter-action@v2
         with: { flutter-version: 3.50.0, channel: stable, cache: true }
       - run: flutter pub get
@@ -67,7 +67,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults: { run: { working-directory: partie_embarque } }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v5
         with: { python-version: "3.13" }
       - run: pip install pytest
@@ -78,7 +78,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults: { run: { working-directory: ml } }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v5
         with: { python-version: "3.13", cache: pip, cache-dependency-path: ml/requirements-dev.txt }
       - run: pip install -r requirements-dev.txt
