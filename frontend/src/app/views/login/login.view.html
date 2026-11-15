@@ -1,0 +1,36 @@
+<main class="login-page">
+  <section class="login-brand" aria-label="Présentation de Predicta">
+    <div class="brand-header"><span class="mark">P</span><span class="brand-name">PREDICTA</span></div>
+    <div class="brand-content">
+      <p class="brand-kicker">MAINTENANCE INTELLIGENTE</p>
+      <h1>Anticipez les arrêts.<br><em>Optimisez votre production.</em></h1>
+      <p class="brand-description">Une vision claire de vos équipements pour prendre les bonnes décisions, au bon moment.</p>
+      <div class="brand-points">
+        <span><b>01</b>Surveillez votre parc en temps réel</span>
+        <span><b>02</b>Transformez vos données en actions</span>
+      </div>
+    </div>
+    <div class="login-art" aria-hidden="true"><span class="orb orb-one"></span><span class="orb orb-two"></span><span class="orb orb-three"></span><span class="art-line"></span></div>
+    <small class="brand-footer">© 2026 Predicta Platform</small>
+  </section>
+
+  <section class="login-panel">
+    <div class="login-card">
+      <div class="card-icon" aria-hidden="true">↗</div>
+      <p class="eyebrow">PLATEFORME DE MAINTENANCE</p>
+      <h2>Bon retour.</h2>
+      <p class="muted">Directeur, responsable de maintenance ou technicien : connectez-vous pour suivre votre parc industriel.</p>
+      @if(error()){<div class="error" role="alert" aria-live="polite">{{error()}}</div>}
+      <form (ngSubmit)="login()">
+        <label for="email">Email professionnel
+          <span class="input-wrap"><span class="input-icon" aria-hidden="true">@</span><input id="email" name="email" type="email" autocomplete="username" placeholder="nom@entreprise.com" [(ngModel)]="email" required></span>
+        </label>
+        <label for="password">Mot de passe
+          <span class="input-wrap"><span class="input-icon lock" aria-hidden="true">●</span><input id="password" name="password" type="password" autocomplete="current-password" placeholder="Votre mot de passe" [(ngModel)]="motDePasse" required></span>
+        </label>
+        <button [disabled]="loading">{{loading?'Connexion…':'Se connecter'}} <span aria-hidden="true">→</span></button>
+      </form>
+      <small class="secure-note"><span aria-hidden="true">✓</span> Accès sécurisé · Predicta Platform</small>
+    </div>
+  </section>
+</main>

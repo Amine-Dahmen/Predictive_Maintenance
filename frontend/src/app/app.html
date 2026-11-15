@@ -1,0 +1,21 @@
+@if (authenticated) {
+  <div class="app-shell">
+    <aside class="sidebar">
+      <a routerLink="/" class="brand"><span class="brand-mark">P</span><span><strong>Predicta</strong><small>Maintenance platform</small></span></a>
+      <div class="workspace-label">ESPACE {{workspace().toUpperCase()}}</div>
+      <nav class="navigation" aria-label="Navigation principale">
+        @for (item of nav(); track item.path) {
+          <a [routerLink]="item.path" routerLinkActive="active" [routerLinkActiveOptions]="{exact: !!item.exact}" class="nav-item"><span class="nav-icon">{{item.icon}}</span><span>{{item.label}}</span></a>
+        }
+      </nav>
+      <div class="sidebar-bottom">
+        <div class="support-card"><b>?</b><span><strong>Besoin d’aide ?</strong><small>Consulter le centre d’aide</small></span></div>
+        <a routerLink="/profil" class="profile"><span class="avatar">{{(auth.user()?.prenom?.[0] ?? '') + (auth.user()?.nom?.[0] ?? '')}}</span><span><strong>{{auth.user()?.prenom}} {{auth.user()?.nom}}</strong><small>{{roleLabel()}}</small></span><b>→</b></a>
+        <button class="logout-button" (click)="logout()"><span>↪</span> Se déconnecter</button>
+      </div>
+    </aside>
+    <main class="main-content"><header class="topbar"><span class="breadcrumb">Predicta <i>/</i> Espace {{workspace()}}</span><span class="system-status" [class.offline]="!realtime.connected()"><i></i> {{realtime.connected() ? 'Temps réel connecté' : 'Temps réel déconnecté'}}</span></header><router-outlet /></main>
+  </div>
+} @else {
+  <router-outlet />
+}

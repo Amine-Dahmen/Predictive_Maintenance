@@ -1,0 +1,142 @@
+<section class="page">
+  <div class="page-heading">
+    <div>
+      <p class="eyebrow">PERFORMANCE INDUSTRIELLE</p>
+      <h1>Indicateurs</h1>
+      <p class="subtitle">Disponibilité, pannes et coût des arrêts du parc.</p>
+    </div>
+    <div class="toolbar">
+      <label>Période
+        <select [(ngModel)]="periodeJours" (ngModelChange)="load()" aria-label="Période">
+          <option [ngValue]="7">7 derniers jours</option>
+          <option [ngValue]="30">30 derniers jours</option>
+          <option [ngValue]="90">90 derniers jours</option>
+          <option [ngValue]="365">12 derniers mois</option>
+        </select>
+      </label>
+      <div class="report-actions" role="group" aria-label="Rapport de maintenance">
+        <button type="button" class="secondary" (click)="report('html')">Rapport (imprimable)</button>
+        <button type="button" class="secondary" (click)="report('csv')">Export CSV</button>
+        <button type="button" class="secondary" (click)="report('html', 'mois-precedent')">Mois précédent</button>
+      </div>
+    </div>
+  </div>
+  @if(data().periode){
+    <p class="period">Du {{date(data().periode?.from)}} au {{date(data().periode?.to)}}@if(loading()){ · actualisation…}</p>
+  }
+
+  @if(error()){<div class="error" role="alert">{{error()}}</div>}
+  @if(message()){<div class="notice" role="status">{{message()}}</div>}
+
+  <div class="kpis">
+    <article><span>Disponibilité</span><strong>{{percent(global.disponibilite)}}</strong><small>Temps où les machines sont disponibles</small></article>
+    <article><span>Coût des arrêts</span><strong>{{money(global.coutArret)}}</strong><small>{{number(global.tempsArretH)}} h d’arrêt sur la période</small></article>
+    <article><span>MTBF</span><strong>{{number(global.mtbfH)}} <i>h</i></strong><small>Temps moyen entre deux pannes</small></article>
+    <article><span>MTTR</span><strong>{{number(global.mttrH)}} <i>h</i></strong><small>Temps moyen de réparation</small></article>
+  </div>
+
+  <div class="summary-grid">
+    <article class="panel">
+      <h2>Parc machines</h2>
+      <strong class="summary-number">{{dashboard().machines?.total ?? 0}}</strong>
+      <p>{{dashboard().machines?.disponibles ?? 0}} disponible(s)</p>
+      <small>{{statusSummary()}}</small>
+    </article>
+    <article class="panel">
+      <h2>Pannes</h2>
+      <strong class="summary-number">{{number(global.nbPannes)}}</strong>
+      <p>sur la période</p>
+      <small>Durée moyenne : {{number(global.dureeMoyennePanneH)}} h · TRS {{percent(global.trs)}}</small>
+    </article>
+    <article class="panel">
+      <h2>Alertes</h2>
+      <strong class="summary-number">{{dashboard().alertes?.ouvertes ?? 0}}</strong>
+      <p>alertes ouvertes</p>
+      <small>{{dashboard().alertes?.critiques ?? 0}} critique(s) · {{dashboard().interventions?.enRetard ?? 0}} intervention(s) en retard</small>
+    </article>
+    <article class="panel">
+      <h2>Machines les plus pénalisantes</h2>
+      @for(m of dashboard().topArrets ?? []; track m.machineId){
+        <p class="top"><b>{{m.code}}</b> {{number(m.tempsArretH)}} h · {{m.nbPannes}} panne(s) · {{money(m.coutArret)}}</p>
+      } @empty {<p>Aucun arrêt sur la période.</p>}
+    </article>
+  </div>
+
+  <section class="panel machine-panel">
+    <div class="panel-title">
+      <div><h2>Risque de panne (IA)</h2><p>Probabilité de panne dans les 48 h estimée par le modèle à partir de l’écart des capteurs à leur comportement habituel.</p></div>
+    </div>
+    @if(predictions().length){
+      <div class="table-wrap"><table>
+        <thead><tr><th>Machine</th><th>Probabilité</th><th>Niveau</th><th>Facteur principal</th><th>Calculé</th></tr></thead>
+        <tbody>
+          @for(p of predictions(); track p.machineId){
+            <tr>
+              <td><strong>{{p.code}}</strong><small>{{p.nom}}</small></td>
+              <td>{{percent(p.probabilite)}}</td>
+              <td><span class="risk" [class]="'risk ' + p.niveau.toLowerCase()">{{riskLabel(p.niveau)}}</span></td>
+              <td>{{p.facteurs[0]?.libelle ?? '—'}}</td>
+              <td>{{date(p.createdAt)}}</td>
+            </tr>
+          }
+        </tbody>
+      </table></div>
+    } @else {<p class="empty">Aucune prédiction (service d’IA arrêté ou pas encore de mesures).</p>}
+  </section>
+
+  <section class="panel machine-panel">
+    <div class="panel-title">
+      <div><h2>Évolution des pannes</h2><p>Nombre de pannes, temps d’arrêt et coût par période (une panne compte dans la période où elle commence).</p></div>
+      <select [(ngModel)]="grain" (ngModelChange)="load()" aria-label="Regroupement">
+        <option value="week">Par semaine</option>
+        <option value="month">Par mois</option>
+      </select>
+    </div>
+    @if(pannes().length){
+      <div class="bars" role="list">
+        @for(p of pannes(); track p.periode){
+          <div class="bar-row" role="listitem">
+            <span class="bar-label">{{label(p)}}</span>
+            <span class="bar-track"><span class="bar" [style.width.%]="(p.tempsArretH / maxArret) * 100"></span></span>
+            <span class="bar-value">{{p.nbPannes}} panne(s) · {{number(p.tempsArretH)}} h · {{money(p.coutArret)}}</span>
+          </div>
+        }
+      </div>
+    } @else {<p class="empty">Aucune panne sur la période.</p>}
+  </section>
+
+  <section class="panel machine-panel">
+    <div class="panel-title">
+      <div><h2>Détail par machine</h2><p>Les tirets indiquent une donnée non calculable ou absente sur la période.</p></div>
+      <span>{{machines.length}} machine(s)</span>
+    </div>
+    @if(machines.length){
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Machine</th><th>Disponibilité</th><th>Pannes</th><th>Fréq. / 30 j</th><th>Arrêt</th><th>MTBF</th><th>MTTR</th><th>Coût horaire d’arrêt</th><th>Coût des arrêts</th></tr></thead>
+          <tbody>
+            @for(machine of machines; track machine.machineId){
+              <tr>
+                <td><strong>{{machine.code}}</strong><small>{{machine.nom}}</small></td>
+                <td>{{percent(machine.disponibilite)}}</td>
+                <td>{{number(machine.nbPannes)}}</td>
+                <td>{{number(machine.frequencePannes30j)}}</td>
+                <td>{{number(machine.tempsArretH)}} h</td>
+                <td>{{number(machine.mtbfH)}} h</td>
+                <td>{{number(machine.mttrH)}} h</td>
+                <td>
+                  @if(canEditCost){
+                    <span class="cost-edit"><input #cost type="number" min="0" step="10" [value]="couts()[machine.machineId] ?? 0" [attr.aria-label]="'Coût horaire d’arrêt de ' + machine.code"><button type="button" class="action" (click)="saveCost(machine, cost.value)">OK</button></span>
+                  } @else {<span>{{money(couts()[machine.machineId])}}</span>}
+                </td>
+                <td><b>{{money(machine.coutArret)}}</b></td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    } @else {
+      <p class="empty">Aucune machine trouvée pour cette période.</p>
+    }
+  </section>
+</section>

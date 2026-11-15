@@ -1,0 +1,22 @@
+# Liste de contrôle d'accès Mosquitto
+# Règle : le nom d'utilisateur MQTT d'un ESP32 = le code de sa machine (ex. M01).
+
+# ---------- Backend ----------
+user backend
+topic read usine/machines/+/mesures
+topic read usine/machines/+/statut
+topic readwrite usine/backend/statut
+# seuils envoyés aux cartes (US-11)
+topic write usine/machines/+/config
+# mise à jour du firmware à distance (US-46)
+topic write usine/machines/+/ota
+topic read usine/machines/+/ota/statut
+
+# ---------- ESP32 (règles appliquées à tous les autres utilisateurs) ----------
+# %u est remplacé par le nom d'utilisateur : l'ESP32 "M01" ne peut écrire que sous usine/machines/M01/
+pattern write usine/machines/%u/mesures
+pattern write usine/machines/%u/statut
+pattern read usine/backend/statut
+pattern read usine/machines/%u/config
+pattern read usine/machines/%u/ota
+pattern write usine/machines/%u/ota/statut

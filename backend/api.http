@@ -1,0 +1,59 @@
+# Requêtes de test — extension VS Code « REST Client » (cliquez sur « Send Request »)
+@api = http://localhost:3000/api
+
+### Santé
+GET {{api}}/health
+
+### 1. Connexion du directeur
+# @name login
+POST {{api}}/auth/login
+Content-Type: application/json
+
+{ "email": "directeur@usine.local", "motDePasse": "ChangezMoi123!" }
+
+### 2. Changement du mot de passe provisoire
+# @name pwd
+POST {{api}}/auth/change-password
+Authorization: Bearer {{login.response.body.accessToken}}
+Content-Type: application/json
+
+{ "ancienMotDePasse": "ChangezMoi123!", "nouveauMotDePasse": "Directeur2026" }
+
+@token = {{pwd.response.body.accessToken}}
+
+### 3. Créer un responsable (le mot de passe provisoire est dans la réponse)
+POST {{api}}/responsables
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "nom": "Ben Salah", "prenom": "Ali", "email": "responsable@usine.local" }
+
+### 4. Liste des machines
+GET {{api}}/machines
+Authorization: Bearer {{token}}
+
+### 5. Détail de la machine 1 (capteurs, dernières valeurs, seuils)
+GET {{api}}/machines/1
+Authorization: Bearer {{token}}
+
+### 6. Mesures de vibration (pour une courbe)
+GET {{api}}/machines/1/mesures?type=VIBRATION&limit=100
+Authorization: Bearer {{token}}
+
+### 7. Alertes ouvertes
+GET {{api}}/alertes?statut=OUVERTE
+Authorization: Bearer {{token}}
+
+### 8. Tableau de bord
+GET {{api}}/indicateurs/dashboard
+Authorization: Bearer {{token}}
+
+### 9. Indicateurs de la machine 1 sur octobre
+GET {{api}}/indicateurs?machineId=1&from=2026-10-01T00:00:00Z&to=2026-10-31T23:59:59Z
+Authorization: Bearer {{token}}
+
+### 10. Renouveler les jetons
+POST {{api}}/auth/refresh
+Content-Type: application/json
+
+{ "refreshToken": "{{pwd.response.body.refreshToken}}" }

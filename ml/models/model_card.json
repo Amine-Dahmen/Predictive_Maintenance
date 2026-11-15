@@ -1,0 +1,127 @@
+{
+  "version": "pdm-azure-hgb-48h-1",
+  "entraine_le": "2026-11-12T20:34:24+00:00",
+  "jeu_de_donnees": "Microsoft Azure Predictive Maintenance (100 machines, 2015, télémesures horaires)",
+  "cible": "panne dans les 48 h",
+  "fenetre": {
+    "recente_h": 24,
+    "reference_h": 168
+  },
+  "correspondance_canaux": {
+    "courant": "volt",
+    "vibration": "vibration",
+    "temperature": "pressure"
+  },
+  "fenetres": 428500,
+  "taux_positifs": 0.0383,
+  "evaluation": "20 machines jamais vues (GroupShuffleSplit), probabilités calibrées (isotonique)",
+  "metriques_test": {
+    "hgb": {
+      "roc_auc": 0.8032,
+      "pr_auc": 0.2239,
+      "brier": 0.0303
+    },
+    "logreg": {
+      "roc_auc": 0.7882,
+      "pr_auc": 0.217,
+      "brier": 0.0312
+    },
+    "hgb+maintenance": {
+      "roc_auc": 0.9804,
+      "pr_auc": 0.7369,
+      "brier": 0.0161
+    }
+  },
+  "seuils": {
+    "0.1": {
+      "pannes_detectees": 0.748,
+      "par_composant": {
+        "comp1": 0.972,
+        "comp2": 0.279,
+        "comp3": 1.0,
+        "comp4": 0.968
+      },
+      "fausses_alertes_par_machine_mois": 3.3
+    },
+    "0.2": {
+      "pannes_detectees": 0.733,
+      "par_composant": {
+        "comp1": 0.972,
+        "comp2": 0.233,
+        "comp3": 1.0,
+        "comp4": 0.968
+      },
+      "fausses_alertes_par_machine_mois": 2.76
+    },
+    "0.3": {
+      "pannes_detectees": 0.328,
+      "par_composant": {
+        "comp1": 0.583,
+        "comp2": 0.047,
+        "comp3": 0.333,
+        "comp4": 0.419
+      },
+      "fausses_alertes_par_machine_mois": 0.52
+    },
+    "0.5": {
+      "pannes_detectees": 0.015,
+      "par_composant": {
+        "comp1": 0.056,
+        "comp2": 0.0,
+        "comp3": 0.0,
+        "comp4": 0.0
+      },
+      "fausses_alertes_par_machine_mois": 0.03
+    }
+  },
+  "niveaux": {
+    "FAIBLE": "< 0.1",
+    "MOYEN": "0.1 à 0.2",
+    "ELEVE": ">= 0.2"
+  },
+  "taux_de_base": 0.0383,
+  "importance_variables": [
+    {
+      "variable": "temperature_z6",
+      "importance": 0.0209
+    },
+    {
+      "variable": "courant_z24",
+      "importance": 0.0183
+    },
+    {
+      "variable": "vibration_z6",
+      "importance": 0.0168
+    },
+    {
+      "variable": "vibration_z24",
+      "importance": 0.0095
+    },
+    {
+      "variable": "courant_z6",
+      "importance": 0.0086
+    },
+    {
+      "variable": "courant_slope24",
+      "importance": 0.0045
+    },
+    {
+      "variable": "vibration_sd_ratio",
+      "importance": 0.0042
+    },
+    {
+      "variable": "vibration_zmax6",
+      "importance": 0.0036
+    },
+    {
+      "variable": "courant_zmax6",
+      "importance": 0.0031
+    },
+    {
+      "variable": "vibration_slope24",
+      "importance": 0.0024
+    }
+  ],
+  "duree_s": 26,
+  "sklearn": "1.9.1"
+}

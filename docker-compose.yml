@@ -1,0 +1,93 @@
+# Plateforme complète : PostgreSQL, Mosquitto, backend, service d'IA, application web.
+#   cp .env.example .env    (puis changez TOUS les secrets)
+#   docker compose up -d --build
+# Web : http://<PC>:8080   API : http://<PC>:3000/api   Broker des cartes : <PC>:1883
+# L'application mobile se connecte à http://<PC>:3000/api (voir docs/DEPLOIEMENT.md).
+name: predimaint
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: maintenance_iot
+      POSTGRES_USER: maint
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD manquant dans .env}
+    volumes: [postgres_data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U maint -d maintenance_iot"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  mosquitto-init:
+    image: eclipse-mosquitto:2
+    entrypoint: ["sh", "/creer-comptes.sh"]
+    environment:
+      MQTT_BACKEND_PASSWORD: ${MQTT_BACKEND_PASSWORD:?MQTT_BACKEND_PASSWORD manquant dans .env}
+      MQTT_MACHINES: ${MQTT_MACHINES:?MQTT_MACHINES manquant dans .env}
+    volumes:
+      - ./deploy/mosquitto/creer-comptes.sh:/creer-comptes.sh:ro
+      - mosquitto_passwd:/mosquitto/passwd
+
+  mosquitto:
+    image: eclipse-mosquitto:2
+    depends_on:
+      mosquitto-init: { condition: service_completed_successfully }
+    ports: ["1883:1883"]
+    volumes:
+      - ./deploy/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./backend/mosquitto/config/acl:/mosquitto/config/acl:ro
+      - mosquitto_passwd:/mosquitto/passwd:ro
+      - mosquitto_data:/mosquitto/data
+    restart: unless-stopped
+
+  ml:
+    build: ./ml
+    environment:
+      ML_API_KEY: ${ML_API_KEY:?ML_API_KEY manquant dans .env}
+    restart: unless-stopped
+
+  backend:
+    build: ./backend
+    depends_on:
+      db: { condition: service_healthy }
+      mosquitto: { condition: service_started }
+      ml: { condition: service_started }
+    ports: ["3000:3000"]
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8080}
+      DATABASE_URL: postgres://maint:${DB_PASSWORD}@db:5432/maintenance_iot
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?JWT_ACCESS_SECRET manquant dans .env}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?JWT_REFRESH_SECRET manquant dans .env}
+      MQTT_URL: mqtt://mosquitto:1883
+      MQTT_USERNAME: backend
+      MQTT_PASSWORD: ${MQTT_BACKEND_PASSWORD}
+      SEED_DIRECTEUR_EMAIL: ${SEED_DIRECTEUR_EMAIL:-directeur@usine.local}
+      SEED_DIRECTEUR_PASSWORD: ${SEED_DIRECTEUR_PASSWORD:?SEED_DIRECTEUR_PASSWORD manquant dans .env}
+      ML_URL: http://ml:8000
+      ML_API_KEY: ${ML_API_KEY}
+      PREDICTION_PAS_S: ${PREDICTION_PAS_S:-3600}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+    volumes:
+      - uploads:/app/uploads
+      - firmware:/app/firmware
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    depends_on: [backend]
+    ports: ["8080:8080"]
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  mosquitto_passwd:
+  mosquitto_data:
+  uploads:
+  firmware:

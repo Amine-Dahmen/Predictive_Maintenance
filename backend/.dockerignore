@@ -1,0 +1,13 @@
+node_modules
+.env
+*.log
+coverage
+mosquitto/data
+mosquitto/log
+mosquitto/config/passwd
+tests
+backups
+uploads
+firmware
+rapports
+.demo-state.json

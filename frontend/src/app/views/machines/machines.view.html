@@ -1,0 +1,113 @@
+<section class="page">
+  <div class="page-heading">
+    <div>
+      <p class="eyebrow">PARC INDUSTRIEL</p>
+      <h1>Machines</h1>
+      <p class="subtitle">Surveillez l’état, les capteurs et les mesures de chaque équipement.</p>
+    </div>
+    <div class="heading-actions">
+      <input class="search" [(ngModel)]="query" placeholder="Rechercher une machine…">
+      @if (canManage()) {
+        <button type="button" class="primary" (click)="showMachineForm.set(!showMachineForm())">＋ Nouvelle machine</button>
+      }
+    </div>
+  </div>
+
+  @if (error()) { <div class="error">{{ error() }}</div> }
+  @if (notice()) { <div class="notice">{{ notice() }}</div> }
+
+  @if (showMachineForm()) {
+    <form class="panel create-form" (ngSubmit)="createMachine()">
+      <h3>Déclarer une machine</h3>
+      <div class="form-grid">
+        <input name="code" [(ngModel)]="machineForm.code" placeholder="Code (ex. M02) = identifiant MQTT" required>
+        <input name="nom" [(ngModel)]="machineForm.nom" placeholder="Nom" required>
+        <input name="emplacement" [(ngModel)]="machineForm.emplacement" placeholder="Emplacement">
+        <label class="check"><input type="checkbox" name="kit" [(ngModel)]="machineForm.kitPredimaint"> Carte ESP32 PrédiMaint (4 capteurs + seuils par défaut)</label>
+      </div>
+      <div class="form-actions">
+        <button type="button" class="secondary" (click)="showMachineForm.set(false)">Annuler</button>
+        <button type="submit" class="primary" [disabled]="saving()">{{ saving() ? 'Création…' : 'Créer la machine' }}</button>
+      </div>
+    </form>
+  }
+
+  <div class="machines-layout" [class.with-detail]="selected()">
+    <div class="panel table-panel">
+      @if (loading()) {
+        <p class="loading">Chargement des machines…</p>
+      } @else {
+        <table>
+          <thead><tr><th>ÉQUIPEMENT</th><th>CODE</th><th>EMPLACEMENT</th><th>ÉTAT</th><th>CAPTEURS</th><th></th></tr></thead>
+          <tbody>
+            @for (m of filtered; track m.id) {
+              <tr (click)="select(m)" [class.selected]="selected()?.id === m.id">
+                <td><b>{{ m.nom }}</b></td>
+                <td>{{ m.code }}</td>
+                <td>{{ m.emplacement || '—' }}</td>
+                <td><span class="pill" [class]="m.etat.toLowerCase()">{{ stateLabels[m.etat] }}</span></td>
+                <td>{{ m.nbCapteurs ?? 0 }}</td>
+                <td>→</td>
+              </tr>
+            } @empty {
+              <tr><td colspan="6">Aucune machine trouvée.</td></tr>
+            }
+          </tbody>
+        </table>
+      }
+    </div>
+
+    @if (selected(); as m) {
+      <aside class="panel machine-detail">
+        <button type="button" class="close" (click)="close()" aria-label="Fermer">×</button>
+        <p class="eyebrow">FICHE MACHINE</p>
+        <h2>{{ m.nom }}</h2>
+        <p class="muted">{{ m.code }} · {{ m.emplacement || 'Emplacement non renseigné' }}</p>
+        <span class="pill" [class]="m.etat.toLowerCase()">{{ stateLabels[m.etat] }}</span>
+
+        <h3>Capteurs</h3>
+        <div class="sensor-grid">
+          @for (c of m.capteurs ?? []; track c.id) {
+            <div class="sensor-card" [class]="level(c.type, c.derniereValeur)" [class.inactive]="!c.actif">
+              <div class="sensor-head">
+                <span>{{ sensorLabels[c.type] }}</span>
+                <span class="online" [class.on]="c.enLigne">{{ c.enLigne ? 'En ligne' : 'Hors ligne' }}</span>
+              </div>
+              <strong>{{ value(c.derniereValeur) }} <small>{{ c.unite }}</small></strong>
+              <small>{{ c.identifiant }}{{ c.actif ? '' : ' · désactivé' }}</small>
+              <small>{{ c.derniereMesureAt ? ('Dernière mesure ' + (c.derniereMesureAt | date: 'dd/MM HH:mm:ss')) : 'Aucune mesure reçue' }}</small>
+            </div>
+          } @empty {
+            <p class="muted">Aucun capteur déclaré.</p>
+          }
+        </div>
+
+        <h3>Seuils d’alerte</h3>
+        @if (m.seuils?.length) {
+          <table class="compact">
+            <thead><tr><th>MESURE</th><th>ALERTE</th><th>CRITIQUE</th></tr></thead>
+            <tbody>
+              @for (s of m.seuils; track s.id) {
+                <tr><td>{{ sensorLabels[s.typeMesure] }}</td><td>≥ {{ s.seuilAlerte }}</td><td>≥ {{ s.seuilCritique }}</td></tr>
+              }
+            </tbody>
+          </table>
+        } @else {
+          <p class="muted">Aucun seuil : aucune alerte ne sera déclenchée.</p>
+        }
+
+        @if (canManage()) {
+          <form class="sensor-form" (ngSubmit)="addSensor()">
+            <h3>Ajouter un capteur</h3>
+            <select name="type" [(ngModel)]="sensorForm.type" (ngModelChange)="onSensorTypeChange()">
+              @for (t of sensorTypes; track t) { <option [value]="t">{{ sensorLabels[t] }}</option> }
+            </select>
+            <input name="identifiant" [(ngModel)]="sensorForm.identifiant" placeholder="Identifiant" required>
+            <input name="unite" [(ngModel)]="sensorForm.unite" placeholder="Unité (par défaut selon le type)">
+            <button type="submit" class="primary" [disabled]="saving()">Ajouter</button>
+          </form>
+        }
+      </aside>
+    }
+  </div>
+</section>

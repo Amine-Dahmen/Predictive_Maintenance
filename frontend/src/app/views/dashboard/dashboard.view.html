@@ -1,0 +1,43 @@
+<section class="page">
+  <div class="page-heading">
+    <div>
+      <p class="eyebrow">BONJOUR, {{ (auth.user()?.prenom ?? '').toUpperCase() }}</p>
+      <h1>Vue d’ensemble</h1>
+      <p class="subtitle">La performance de votre parc industriel en un coup d’œil.</p>
+    </div>
+    <a routerLink="/machines" class="primary">Explorer le parc →</a>
+  </div>
+  @if (error()) { <div class="error">{{ error() }}</div> }
+  <div class="kpis">
+    <article><span>Machines surveillées</span><strong>{{ machines().length }}</strong><small>équipements enregistrés</small></article>
+    <article><span>Alertes ouvertes</span><strong>{{ alerts().length }}</strong><small>nécessitent votre attention</small></article>
+    @if (auth.hasRole('DIRECTEUR', 'RESPONSABLE')) {
+      <article><span>Disponibilité du parc</span><strong>{{ percent(stats().disponibilite) }}<i>%</i></strong><small>sur les 30 derniers jours</small></article>
+      <article><span>Performance globale</span><strong>{{ percent(stats().trs) }}<i>%</i></strong><small>TRS calculé par l’API</small></article>
+    }
+  </div>
+  <div class="grid">
+    <article class="panel">
+      <div class="panel-title"><div><h2>État du parc</h2><p>Situation actuelle des équipements</p></div><a routerLink="/machines">Tout voir →</a></div>
+      <div class="state-list">
+        @for (m of machines(); track m.id) {
+          <div><span class="dot" [class]="m.etat.toLowerCase()"></span><b>{{ m.nom }}</b><small>{{ m.code }} · {{ stateLabel(m.etat) }}</small></div>
+        } @empty {
+          <p class="empty">Aucune machine disponible.</p>
+        }
+      </div>
+    </article>
+    <article class="panel">
+      <div class="panel-title"><div><h2>Alertes récentes</h2><p>Événements à surveiller</p></div><a routerLink="/alertes">Voir tout →</a></div>
+      @for (a of alerts().slice(0, 5); track a.id) {
+        <div class="alert-row">
+          <span class="alert-badge">{{ a.niveau }}</span>
+          <div><b>{{ a.machineCode }} · {{ sensorLabels[a.typeMesure] }}</b><small>{{ a.valeur }} {{ a.unite }} · seuil {{ a.seuilDepasse }} {{ a.unite }}</small></div>
+          <time>{{ a.createdAt | date: 'dd/MM HH:mm' }}</time>
+        </div>
+      } @empty {
+        <p class="empty">Aucune alerte ouverte.</p>
+      }
+    </article>
+  </div>
+</section>

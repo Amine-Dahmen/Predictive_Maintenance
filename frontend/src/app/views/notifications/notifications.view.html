@@ -1,0 +1,33 @@
+<section class="page">
+  <div class="page-heading">
+    <div>
+      <p class="eyebrow">ADMINISTRATION</p>
+      <h1>Canaux de notification</h1>
+      <p class="subtitle">Choisissez comment et à partir de quel niveau les alertes capteurs sont signalées.</p>
+    </div>
+  </div>
+  @if(error()){<div class="error" role="alert">{{error()}}</div>}
+  @if(message()){<div class="notice" role="status">{{message()}}</div>}
+  <div class="summary-grid channels">
+    @for(c of canaux(); track c.canal){
+      <form class="panel channel" (ngSubmit)="save(c)">
+        <h2>{{libelles[c.canal].titre}}</h2>
+        <p>{{libelles[c.canal].aide}}</p>
+        <label class="switch"><input type="checkbox" [(ngModel)]="c.actif" [name]="c.canal + '-actif'"> Canal actif</label>
+        <label>Niveau minimal
+          <select [(ngModel)]="c.niveauMin" [name]="c.canal + '-niveau'">
+            <option value="ALERTE">Alerte et critique</option>
+            <option value="CRITIQUE">Critique uniquement</option>
+          </select>
+        </label>
+        @if(c.canal === 'EMAIL'){
+          <label>Destinataires supplémentaires
+            <input type="text" [(ngModel)]="c.destinataires" [name]="c.canal + '-dest'" placeholder="chef.atelier@usine.local, astreinte@usine.local">
+          </label>
+          <small>Sans serveur SMTP configuré sur le backend (SMTP_HOST), les e-mails sont seulement inscrits dans son journal.</small>
+        }
+        <button type="submit" class="primary">Enregistrer</button>
+      </form>
+    }
+  </div>
+</section>

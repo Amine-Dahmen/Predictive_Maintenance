@@ -1,0 +1,8 @@
+const service = require('./of.service');
+
+module.exports = {
+  list: async (req, res) => res.json(await service.list(req.query)),
+  get: async (req, res) => res.json(await service.get(req.params.id)),
+  create: async (req, res) => res.status(201).json(await service.create(req.body)),
+  update: async (req, res) => res.json(await service.update(req.params.id, req.body)),
+};

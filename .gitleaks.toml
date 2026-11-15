@@ -1,0 +1,28 @@
+# Règles par défaut de gitleaks + valeurs factices connues du projet (exemples, tests).
+# Ne JAMAIS ajouter ici un vrai secret : supprimez-le de l'historique et changez-le.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Valeurs d'exemple et de test"
+regexes = [
+  '''change-moi[\w-]*''',
+  '''remplacez_par_un_secret[\w]*''',
+  '''esp32_M01_pwd''',
+  '''MotDePasse123''',
+  '''E2eMotDePasse1''',
+  '''a{40}|b{40}''',
+]
+paths = [
+  '''mobile/(ios|macos|android|windows|linux)/.*''',
+  '''ml/models/model\.joblib''',
+]
+
+# Mots de passe Wi-Fi / MQTT du firmware : courts, ils échappent aux règles génériques (entropie faible)
+[[rules]]
+id = "predimaint-firmware-credentials"
+description = "Mot de passe Wi-Fi ou MQTT réel dans le firmware ESP32 (doit rester dans credentials.py, ignoré par git)"
+regex = '''(?:WIFI_PASSWORD|MQTT_PASSWORD)\s*=\s*"([^"]+)"'''
+secretGroup = 1
+[rules.allowlist]
+regexes = ['''^(my-wifi-password|esp32_M01_pwd|esp32-01-password|change-moi.*)$''']

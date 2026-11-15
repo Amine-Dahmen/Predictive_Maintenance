@@ -1,0 +1,6085 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "API Maintenance prédictive IoT",
+    "version": "1.0.0",
+    "description": "Backend Node.js / PostgreSQL / MQTT de l'application IoT de maintenance prédictive.\n\n**Comment tester :**\n1. `POST /auth/login` → *Try it out* → choisissez l'exemple → *Execute* → copiez `accessToken`.\n2. Bouton **Authorize** (cadenas en haut) → collez le jeton (sans écrire « Bearer ») → *Authorize*.\n3. Pour changer de compte : *Authorize* → *Logout* → collez le jeton de l'autre compte.\n4. Dans chaque route, la liste **Examples** contient les cas de test (✅ succès attendu, ❌ erreur attendue).\n\nLes numéros (T01…T77) suivent le plan de tests ; les identifiants supposent une base neuve (`db:migrate` + `db:seed`)."
+  },
+  "servers": [
+    {
+      "url": "/api",
+      "description": "Ce serveur"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Système"
+    },
+    {
+      "name": "Authentification"
+    },
+    {
+      "name": "Utilisateurs"
+    },
+    {
+      "name": "Machines"
+    },
+    {
+      "name": "Alertes"
+    },
+    {
+      "name": "Interventions"
+    },
+    {
+      "name": "Ordres de fabrication"
+    },
+    {
+      "name": "Indicateurs"
+    },
+    {
+      "name": "Temps réel"
+    },
+    {
+      "name": "Release 3",
+      "description": "Fiabilité, pilotage et administration (US-17, 25, 29, 31, 32, 34-40, 46)"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "accessToken reçu par /auth/login (valable 15 min)"
+      }
+    },
+    "schemas": {
+      "Erreur": {
+        "type": "object",
+        "properties": {
+          "erreur": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "example": "REQUETE_INVALIDE",
+                "description": "NON_AUTHENTIFIE, JETON_EXPIRE, JETON_INVALIDE, CHANGEMENT_MDP_REQUIS, ACCES_REFUSE, REQUETE_INVALIDE, INTROUVABLE, CONFLIT, IDENTIFIANTS_INVALIDES, SESSION_INVALIDE, SESSION_EXPIREE, MOT_DE_PASSE_INCORRECT, TROP_DE_REQUETES, ERREUR_INTERNE"
+              },
+              "message": {
+                "type": "string",
+                "example": "Données invalides"
+              },
+              "details": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "champ": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ]
+          }
+        }
+      },
+      "UtilisateurConnecte": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "nom": {
+            "type": "string"
+          },
+          "prenom": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "DIRECTEUR",
+              "RESPONSABLE",
+              "TECHNICIEN"
+            ]
+          },
+          "doitChangerMotDePasse": {
+            "type": "boolean"
+          }
+        }
+      },
+      "Jetons": {
+        "type": "object",
+        "properties": {
+          "accessToken": {
+            "type": "string",
+            "description": "JWT, valable 15 min"
+          },
+          "refreshToken": {
+            "type": "string",
+            "description": "usage unique, valable 7 jours"
+          },
+          "tokenType": {
+            "type": "string",
+            "example": "Bearer"
+          },
+          "utilisateur": {
+            "$ref": "#/components/schemas/UtilisateurConnecte"
+          }
+        }
+      },
+      "Utilisateur": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "nom": {
+            "type": "string"
+          },
+          "prenom": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "telephone": {
+            "type": "string",
+            "nullable": true
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "DIRECTEUR",
+              "RESPONSABLE",
+              "TECHNICIEN"
+            ]
+          },
+          "statut": {
+            "type": "string",
+            "enum": [
+              "ACTIF",
+              "DESACTIVE"
+            ]
+          },
+          "specialite": {
+            "type": "string",
+            "nullable": true
+          },
+          "disponible": {
+            "type": "boolean"
+          },
+          "doitChangerMotDePasse": {
+            "type": "boolean"
+          },
+          "dateDesactivation": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "interventionsEnCours": {
+            "type": "integer",
+            "description": "liste uniquement"
+          }
+        }
+      },
+      "UtilisateurCree": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Utilisateur"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "motDePasseProvisoire": {
+                "type": "string",
+                "description": "affiché une seule fois, à transmettre à l'utilisateur"
+              }
+            }
+          }
+        ]
+      },
+      "Capteur": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "identifiant": {
+            "type": "string"
+          },
+          "machineId": {
+            "type": "integer"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "COURANT",
+              "VIBRATION",
+              "TEMPERATURE",
+              "HUMIDITE"
+            ]
+          },
+          "unite": {
+            "type": "string"
+          },
+          "actif": {
+            "type": "boolean"
+          },
+          "enLigne": {
+            "type": "boolean"
+          },
+          "derniereMesureAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "derniereValeur": {
+            "type": "number",
+            "description": "détail machine uniquement",
+            "nullable": true
+          }
+        }
+      },
+      "Seuil": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "typeMesure": {
+            "type": "string",
+            "enum": [
+              "COURANT",
+              "VIBRATION",
+              "TEMPERATURE",
+              "HUMIDITE"
+            ]
+          },
+          "seuilAlerte": {
+            "type": "number"
+          },
+          "seuilCritique": {
+            "type": "number"
+          },
+          "modifiePar": {
+            "type": "integer",
+            "nullable": true
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "Machine": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "code": {
+            "type": "string"
+          },
+          "nom": {
+            "type": "string"
+          },
+          "emplacement": {
+            "type": "string",
+            "nullable": true
+          },
+          "etat": {
+            "type": "string",
+            "enum": [
+              "NORMAL",
+              "ALERTE",
+              "PANNE",
+              "EN_MAINTENANCE",
+              "SANS_DONNEES"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "nbCapteurs": {
+            "type": "integer",
+            "description": "liste uniquement"
+          }
+        }
+      },
+      "MachineDetail": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Machine"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "capteurs": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Capteur"
+                }
+              },
+              "seuils": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Seuil"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "Mesure": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "valeur": {
+            "type": "number"
+          },
+          "horodatage": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "capteurId": {
+            "type": "integer"
+          },
+          "identifiant": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "COURANT",
+              "VIBRATION",
+              "TEMPERATURE",
+              "HUMIDITE"
+            ]
+          },
+          "unite": {
+            "type": "string"
+          }
+        }
+      },
+      "Historique": {
+        "type": "object",
+        "properties": {
+          "categorie": {
+            "type": "string",
+            "enum": [
+              "ALERTE",
+              "INTERVENTION"
+            ]
+          },
+          "id": {
+            "type": "integer"
+          },
+          "date": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "sous_type": {
+            "type": "string"
+          },
+          "statut": {
+            "type": "string"
+          },
+          "libelle": {
+            "type": "string"
+          }
+        }
+      },
+      "Alerte": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "machineId": {
+            "type": "integer"
+          },
+          "machineCode": {
+            "type": "string"
+          },
+          "machineNom": {
+            "type": "string"
+          },
+          "capteurId": {
+            "type": "integer"
+          },
+          "capteur": {
+            "type": "string"
+          },
+          "typeMesure": {
+            "type": "string",
+            "enum": [
+              "COURANT",
+              "VIBRATION",
+              "TEMPERATURE",
+              "HUMIDITE"
+            ]
+          },
+          "unite": {
+            "type": "string"
+          },
+          "niveau": {
+            "type": "string",
+            "enum": [
+              "ALERTE",
+              "CRITIQUE"
+            ]
+          },
+          "valeur": {
+            "type": "number"
+          },
+          "seuilDepasse": {
+            "type": "number"
+          },
+          "statut": {
+            "type": "string",
+            "enum": [
+              "OUVERTE",
+              "PRISE_EN_COMPTE",
+              "CLOTUREE"
+            ]
+          },
+          "priseEnCompteParId": {
+            "type": "integer",
+            "nullable": true
+          },
+          "priseEnCompteAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "clotureeAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "commentaire": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "enRetard": {
+            "type": "boolean",
+            "description": "ouverte depuis plus de 30 min"
+          }
+        }
+      },
+      "AlertesParMachine": {
+        "type": "object",
+        "properties": {
+          "machineId": {
+            "type": "integer"
+          },
+          "code": {
+            "type": "string"
+          },
+          "nom": {
+            "type": "string"
+          },
+          "nbAlertes": {
+            "type": "integer"
+          },
+          "nbCritiques": {
+            "type": "integer"
+          }
+        }
+      },
+      "Intervention": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "PREVENTIVE",
+              "PREDICTIVE",
+              "CURATIVE"
+            ]
+          },
+          "priorite": {
+            "type": "string",
+            "enum": [
+              "BASSE",
+              "MOYENNE",
+              "HAUTE",
+              "URGENTE"
+            ]
+          },
+          "statut": {
+            "type": "string",
+            "enum": [
+              "A_AFFECTER",
+              "AFFECTEE",
+              "EN_COURS",
+              "CLOTUREE",
+              "ANNULEE"
+            ]
+          },
+          "description": {
+            "type": "string"
+          },
+          "machineId": {
+            "type": "integer"
+          },
+          "machineCode": {
+            "type": "string"
+          },
+          "machineNom": {
+            "type": "string"
+          },
+          "machineEmplacement": {
+            "type": "string",
+            "nullable": true
+          },
+          "alerteId": {
+            "type": "integer",
+            "nullable": true
+          },
+          "technicienId": {
+            "type": "integer",
+            "nullable": true
+          },
+          "technicienNom": {
+            "type": "string",
+            "nullable": true
+          },
+          "technicienPrenom": {
+            "type": "string",
+            "nullable": true
+          },
+          "datePrevue": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "echeance": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "debutPanne": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "dateDebut": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "dateFin": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "resultat": {
+            "type": "string",
+            "enum": [
+              "REMISE_EN_SERVICE",
+              "NON_RESOLU"
+            ],
+            "nullable": true
+          },
+          "creeParId": {
+            "type": "integer",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "enRetard": {
+            "type": "boolean"
+          },
+          "dureeReelleMin": {
+            "type": "number",
+            "nullable": true
+          },
+          "avertissements": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "affectation / modification : conflit de planning du technicien"
+          }
+        }
+      },
+      "CompteRendu": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "interventionId": {
+            "type": "integer"
+          },
+          "diagnostic": {
+            "type": "string",
+            "nullable": true
+          },
+          "actions": {
+            "type": "string",
+            "nullable": true
+          },
+          "piecesUtilisees": {
+            "type": "string",
+            "nullable": true
+          },
+          "brouillon": {
+            "type": "boolean"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "InterventionDetail": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Intervention"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "compteRendu": {
+                "$ref": "#/components/schemas/CompteRendu",
+                "nullable": true
+              },
+              "alerte": {
+                "$ref": "#/components/schemas/Alerte",
+                "nullable": true
+              }
+            }
+          }
+        ]
+      },
+      "OrdreFabrication": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "numero": {
+            "type": "string"
+          },
+          "machineId": {
+            "type": "integer"
+          },
+          "machineCode": {
+            "type": "string"
+          },
+          "produit": {
+            "type": "string"
+          },
+          "quantitePrevue": {
+            "type": "integer"
+          },
+          "quantiteProduite": {
+            "type": "integer"
+          },
+          "quantiteRebutee": {
+            "type": "integer"
+          },
+          "tempsCycleS": {
+            "type": "number",
+            "nullable": true
+          },
+          "dateDebut": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "dateFin": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "statut": {
+            "type": "string",
+            "enum": [
+              "PLANIFIE",
+              "EN_COURS",
+              "TERMINE"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "Kpi": {
+        "type": "object",
+        "properties": {
+          "tempsArretH": {
+            "type": "number"
+          },
+          "nbPannes": {
+            "type": "integer"
+          },
+          "mtbfH": {
+            "type": "number",
+            "nullable": true
+          },
+          "mttrH": {
+            "type": "number",
+            "nullable": true
+          },
+          "nbReparations": {
+            "type": "integer"
+          },
+          "disponibilite": {
+            "type": "number",
+            "nullable": true
+          },
+          "performance": {
+            "type": "number",
+            "nullable": true
+          },
+          "qualite": {
+            "type": "number",
+            "nullable": true
+          },
+          "trs": {
+            "type": "number",
+            "nullable": true
+          },
+          "trsIncomplet": {
+            "type": "boolean"
+          },
+          "messages": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "production": {
+            "type": "object",
+            "properties": {
+              "produite": {
+                "type": "integer"
+              },
+              "rebutee": {
+                "type": "integer"
+              },
+              "ofTermines": {
+                "type": "integer"
+              }
+            }
+          }
+        }
+      },
+      "Indicateurs": {
+        "type": "object",
+        "properties": {
+          "periode": {
+            "type": "object",
+            "properties": {
+              "from": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "to": {
+                "type": "string",
+                "format": "date-time"
+              }
+            }
+          },
+          "filtres": {
+            "type": "object",
+            "properties": {
+              "machineId": {
+                "type": "integer",
+                "nullable": true
+              }
+            }
+          },
+          "global": {
+            "$ref": "#/components/schemas/Kpi"
+          },
+          "machines": {
+            "type": "array",
+            "items": {
+              "allOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "machineId": {
+                      "type": "integer"
+                    },
+                    "code": {
+                      "type": "string"
+                    },
+                    "nom": {
+                      "type": "string"
+                    }
+                  }
+                },
+                {
+                  "$ref": "#/components/schemas/Kpi"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "Dashboard": {
+        "type": "object",
+        "properties": {
+          "machines": {
+            "type": "object",
+            "properties": {
+              "total": {
+                "type": "integer"
+              },
+              "parEtat": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "integer"
+                }
+              },
+              "disponibles": {
+                "type": "integer"
+              }
+            }
+          },
+          "alertes": {
+            "type": "object",
+            "properties": {
+              "ouvertes": {
+                "type": "integer"
+              },
+              "critiques": {
+                "type": "integer"
+              }
+            }
+          },
+          "interventions": {
+            "type": "object",
+            "properties": {
+              "parStatut": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "integer"
+                }
+              },
+              "enRetard": {
+                "type": "integer"
+              }
+            }
+          },
+          "production": {
+            "type": "object",
+            "properties": {
+              "ofEnCours": {
+                "type": "integer"
+              }
+            }
+          },
+          "indicateurs": {
+            "$ref": "#/components/schemas/Kpi"
+          },
+          "periode": {
+            "type": "object",
+            "properties": {
+              "from": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "to": {
+                "type": "string",
+                "format": "date-time"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": [
+          "Système"
+        ],
+        "summary": "État de l'API et de la connexion MQTT",
+        "description": "**Route publique**\n\n**Cas de test :** T01 (200)",
+        "operationId": "getHealth",
+        "responses": {
+          "200": {
+            "description": "Succès",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statut": {
+                      "type": "string",
+                      "example": "ok"
+                    },
+                    "mqtt": {
+                      "type": "string",
+                      "enum": [
+                        "connecte",
+                        "deconnecte"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": []
+      }
+    },
+    "/auth/login": {
+      "post": {
+        "tags": [
+          "Authentification"
+        ],
+        "summary": "Connexion",
+        "description": "**Route publique**\n\nLimité à 10 échecs par 15 min et par adresse IP (429).\n\n**Cas de test :** T02 (401), T03 (200), T11 (200), T22 (200), T28 (200)",
+        "operationId": "postAuthLogin",
+        "responses": {
+          "200": {
+            "description": "Succès",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Jetons"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Données invalides",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié / jeton invalide / session invalide — T02 : Connexion avec un mauvais mot de passe",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "format": "email"
+                  },
+                  "motDePasse": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "email",
+                  "motDePasse"
+                ]
+              },
+              "examples": {
+                "T02": {
+                  "summary": "T02 ❌ Connexion avec un mauvais mot de passe → 401",
+                  "value": {
+                    "email": "directeur@usine.local",
+                    "motDePasse": "Mauvais123"
+                  }
+                },
+                "T03": {
+                  "summary": "T03 ✅ Connexion du directeur (mot de passe provisoire) → 200",
+                  "value": {
+                    "email": "directeur@usine.local",
+                    "motDePasse": "ChangezMoi123!"
+                  }
+                },
+                "T11": {
+                  "summary": "T11 ✅ Reconnexion du directeur → 200",
+                  "value": {
+                    "email": "directeur@usine.local",
+                    "motDePasse": "Directeur2026"
+                  }
+                },
+                "T22": {
+                  "summary": "T22 ✅ Connexion du responsable (mot de passe provisoire de T13) → 200",
+                  "value": {
+                    "email": "responsable@usine.local",
+                    "motDePasse": "<motDePasseProvisoire de T13>"
+                  }
+                },
+                "T28": {
+                  "summary": "T28 ✅ Connexion du technicien puis changement du mot de passe → 200",
+                  "value": {
+                    "email": "technicien@usine.local",
+                    "motDePasse": "<motDePasseProvisoire de T24>"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": []
+      }
+    },
+    "/auth/refresh": {
+      "post": {
+        "tags": [
+          "Authentification"
+        ],
+        "summary": "Renouveler les jetons",
+        "description": "**Route publique**\n\nLe refresh token est à usage unique : le réutiliser ferme toutes les sessions de l'utilisateur.\n\n**Cas de test :** T09 (200), T10 (401)",
+        "operationId": "postAuthRefresh",
+        "responses": {
+          "200": {
+            "description": "Succès",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Jetons"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Données invalides",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié / jeton invalide / session invalide — T10 : Réutilisation d'un refresh token déjà utilisé",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "refreshToken": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "refreshToken"
+                ]
+              },
+              "examples": {
+                "T09": {
+                  "summary": "T09 ✅ Renouvellement des jetons (refresh) → 200",
+                  "value": {
+                    "refreshToken": "<refreshToken reçu en T06>"
+                  }
+                },
+                "T10": {
+                  "summary": "T10 ❌ Réutilisation d'un refresh token déjà utilisé → 401",
+                  "value": {
+                    "refreshToken": "<le MÊME refreshToken qu'en T09>"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": []
+      }
+    },
+    "/auth/logout": {
+      "post": {
+        "tags": [
+          "Authentification"
+        ],
+        "summary": "Déconnexion",
+        "description": "**Route publique**\n\n**Cas de test :** T12 (204)",
+        "operationId": "postAuthLogout",
+        "responses": {
+          "204": {
+            "description": "Succès, pas de contenu"
+          },
+          "400": {
+            "description": "Données invalides",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "refreshToken": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "refreshToken"
+                ]
+              },
+              "examples": {
+                "T12": {
+                  "summary": "T12 ✅ Déconnexion d'une session → 204",
+                  "value": {
+                    "refreshToken": "<refreshToken reçu en T11>"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": []
+      }
+    },
+    "/auth/me": {
+      "get": {
+        "tags": [
+          "Authentification"
+        ],
+        "summary": "Profil de l'utilisateur connecté",
+        "description": "**Rôle(s) :** connecté (même avec mot de passe provisoire)\n\n**Cas de test :** T07 (200)",
+        "operationId": "getAuthMe",
+        "responses": {
+          "200": {
+            "description": "Succès",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UtilisateurConnecte"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié / jeton invalide / session invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/change-password": {
+      "post": {
+        "tags": [
+          "Authentification"
+        ],
+        "summary": "Changer son mot de passe",
+        "description": "**Rôle(s) :** connecté (même avec mot de passe provisoire)\n\nRenvoie de nouveaux jetons et déconnecte les autres appareils.\n\n**Cas de test :** T05 (400), T06 (200), T23 (200)",
+        "operationId": "postAuthChangePassword",
+        "responses": {
+          "200": {
+            "description": "Succès",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Jetons"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Données invalides — T05 : Nouveau mot de passe trop faible",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié / jeton invalide / session invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "ancienMotDePasse": {
+                    "type": "string"
+                  },
+                  "nouveauMotDePasse": {
+                    "type": "string",
+                    "minLength": 10,
+                    "maxLength": 100,
+                    "description": "10 caractères min., au moins une minuscule, une majuscule et un chiffre"
+                  }
+                },
+                "required": [
+                  "ancienMotDePasse",
+                  "nouveauMotDePasse"
+                ]
+              },
+              "examples": {
+                "T05": {
+                  "summary": "T05 ❌ Nouveau mot de passe trop faible → 400",
+                  "value": {
+                    "ancienMotDePasse": "ChangezMoi123!",
+                    "nouveauMotDePasse": "faible"
+                  }
+                },
+                "T06": {
+                  "summary": "T06 ✅ Changement du mot de passe provisoire → 200",
+                  "value": {
+                    "ancienMotDePasse": "ChangezMoi123!",
+                    "nouveauMotDePasse": "Directeur2026"
+                  }
+                },
+                "T23": {
+                  "summary": "T23 ✅ Le responsable change son mot de passe → 200",
+                  "value": {
+                    "ancienMotDePasse": "<motDePasseProvisoire de T13>",
+                    "nouveauMotDePasse": "Responsable2026"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/responsables": {
+      "get": {
+        "tags": [
+          "Utilisateurs"
+        ],
+        "summary": "Liste des responsables",
+        "description": "**Rôle(s) :** DIRECTEUR\n\n**Cas de test :** T15 (200)",
+        "operationId": "getResponsables",
+        "responses": {
+          "200": {
+            "description": "Succès",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Utilisateur"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié / jeton invalide / session invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Rôle insuffisant ou mot de passe provisoire à changer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "recherche",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "statut",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "ACTIF",
+                "DESACTIVE"
+              ]
+            }
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Utilisateurs"
+        ],
+        "summary": "Créer un responsable de maintenance",
+        "description": "**Rôle(s) :** DIRECTEUR\n\n**Cas de test :** T13 (201), T14 (409)",
+        "operationId": "postResponsables",
+        "responses": {
+          "201": {
+            "description": "Créé",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UtilisateurCree"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Données invalides",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié / jeton invalide / session invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Rôle insuffisant ou mot de passe provisoire à changer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflit (doublon ou statut incompatible) — T14 : E-mail déjà utilisé",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "nom": {
+                    "type": "string",
+                    "maxLength": 80
+                  },
+                  "prenom": {
+                    "type": "string",
+                    "maxLength": 80
+                  },
+                  "email": {
+                    "type": "string",
+                    "format": "email"
+                  },
+                  "telephone": {
+                    "type": "string",
+                    "maxLength": 30
+                  }
+                },
+                "required": [
+                  "nom",
+                  "prenom",
+                  "email"
+                ]
+              },
+              "examples": {
+                "T13": {
+                  "summary": "T13 ✅ Le directeur crée un responsable de maintenance → 201",
+                  "value": {
+                    "nom": "Ben Salah",
+                    "prenom": "Ali",
+                    "email": "responsable@usine.local",
+                    "telephone": "0600000001"
+                  }
+                },
+                "T14": {
+                  "summary": "T14 ❌ E-mail déjà utilisé → 409",
+                  "value": {
+                    "nom": "Autre",
+                    "prenom": "Personne",
+                    "email": "responsable@usine.local"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/responsables/{id}": {
+      "get": {
+        "tags": [
+          "Utilisateurs"
+        ],
+        "summary": "Détail d'un responsable",
+        "description": "**Rôle(s) :** DIRECTEUR\n\n**Cas de test :** T16 (200)",
+        "operationId": "getResponsablesId",
+        "responses": {
+          "200": {
+            "description": "Succès",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Utilisateur"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié / jeton invalide / session invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Rôle insuffisant ou mot de passe provisoire à changer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Introuvable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "Utilisateurs"
+        ],
+        "summary": "Modifier un responsable",
+        "description": "**Rôle(s) :** DIRECTEUR\n\n**Cas de test :** T17 (200)",
+        "operationId": "patchResponsablesId",
+        "responses": {
+          "200": {
+            "description": "Succès",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Utilisateur"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Données invalides",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié / jeton invalide / session invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Rôle insuffisant ou mot de passe provisoire à changer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Introuvable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "nom": {
+                    "type": "string"
+                  },
+                  "prenom": {
+                    "type": "string"
+                  },
+                  "email": {
+                    "type": "string",
+                    "format": "email"
+                  },
+                  "telephone": {
+                    "type": "string"
+                  }
+                }
+              },
+              "examples": {
+                "T17": {
+                  "summary": "T17 ✅ Modifier le téléphone du responsable → 200",
+                  "value": {
+                    "telephone": "0611111111"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/responsables/{id}/statut": {
+      "patch": {
+        "tags": [
+          "Utilisateurs"
+        ],
+        "summary": "Activer / désactiver un responsable",
+        "description": "**Rôle(s) :** DIRECTEUR\n\n**Cas de test :** T18 (200), T19 (200), T20 (400)",
+        "operationId": "patchResponsablesIdStatut",
+        "responses": {
+          "200": {
+            "description": "Succès",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Utilisateur"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Données invalides — T20 : Le directeur ne peut pas se désactiver lui-même",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié / jeton invalide / session invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Rôle insuffisant ou mot de passe provisoire à changer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Introuvable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "statut": {
+                    "type": "string",
+                    "enum": [
+                      "ACTIF",
+                      "DESACTIVE"
+                    ]
+                  }
+                },
+                "required": [
+                  "statut"
+                ]
+              },
+              "examples": {
+                "T18": {
+                  "summary": "T18 ✅ Désactiver le responsable → 200",
+                  "value": {
+                    "statut": "DESACTIVE"
+                  }
+                },
+                "T19": {
+                  "summary": "T19 ✅ Réactiver le responsable → 200",
+                  "value": {
+                    "statut": "ACTIF"
+                  }
+                },
+                "T20": {
+                  "summary": "T20 ❌ Le directeur ne peut pas se désactiver lui-même → 400",
+                  "value": {
+                    "statut": "DESACTIVE"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/techniciens": {
+      "get": {
+        "tags": [
+          "Utilisateurs"
+        ],
+        "summary": "Liste des techniciens",
+        "description": "**Rôle(s) :** RESPONSABLE, DIRECTEUR\n\n**Cas de test :** T25 (200)",
+        "operationId": "getTechniciens",
+        "responses": {
+          "200": {
+            "description": "Succès",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Utilisateur"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié / jeton invalide / session invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Rôle insuffisant ou mot de passe provisoire à changer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "recherche",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "statut",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "ACTIF",
+                "DESACTIVE"
+              ]
+            }
+          },
+          {
+            "name": "disponible",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ]
+            }
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Utilisateurs"
+        ],
+        "summary": "Créer un technicien",
+        "description": "**Rôle(s) :** RESPONSABLE\n\n**Cas de test :** T21 (403), T24 (201)",
+        "operationId": "postTechniciens",
+        "responses": {
+          "201": {
+            "description": "Créé",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UtilisateurCree"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Données invalides",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié / jeton invalide / session invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Rôle insuffisant ou mot de passe provisoire à changer — T21 : Un directeur ne peut pas créer de technicien",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "nom": {
+                    "type": "string",
+                    "maxLength": 80
+                  },
+                  "prenom": {
+                    "type": "string",
+                    "maxLength": 80
+                  },
+                  "email": {
+                    "type": "string",
+                    "format": "email"
+                  },
+                  "telephone": {
+                    "type": "string",
+                    "maxLength": 30
+                  },
+                  "specialite": {
+                    "type": "string",
+                    "maxLength": 80
+                  }
+                },
+                "required": [
+                  "nom",
+                  "prenom",
+                  "email",
+                  "specialite"
+                ]
+              },
+              "examples": {
+                "T21": {
+                  "summary": "T21 ❌ Un directeur ne peut pas créer de technicien → 403",
+                  "value": {
+                    "nom": "Trabelsi",
+                    "prenom": "Sami",
+                    "email": "technicien@usine.local",
+                    "specialite": "Mécanique"
+                  }
+                },
+                "T24": {
+                  "summary": "T24 ✅ Le responsable crée un technicien → 201",
+                  "value": {
+                    "nom": "Trabelsi",
+                    "prenom": "Sami",
+                    "email": "technicien@usine.local",
+                    "telephone": "0600000002",
+                    "specialite": "Mécanique"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/techniciens/{id}": {
+      "get": {
+        "tags": [
+          "Utilisateurs"
+        ],
+        "summary": "Détail d'un technicien",
+        "description": "**Rôle(s) :** RESPONSABLE, DIRECTEUR\n\n**Cas de test :** T26 (200)",
+        "operationId": "getTechniciensId",
+        "responses": {
+          "200": {
+            "description": "Succès",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Utilisateur"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié / jeton invalide / session invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Rôle insuffisant ou mot de passe provisoire à changer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Introuvable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "Utilisateurs"
+        ],
+        "summary": "Modifier un technicien",
+        "description": "**Rôle(s) :** RESPONSABLE\n\n**Cas de test :** T27 (200)",
+        "operationId": "patchTechniciensId",
+        "responses": {
+          "200": {
+            "description": "Succès",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Utilisateur"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Données invalides",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié / jeton invalide / session invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Rôle insuffisant ou mot de passe provisoire à changer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Introuvable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "nom": {
+                    "type": "string"
+                  },
+                  "prenom": {
+                    "type": "string"
+                  },
+                  "email": {
+                    "type": "string",
+                    "format": "email"
+                  },
+                  "telephone": {
+                    "type": "string"
+                  },
+                  "specialite": {
+                    "type": "string"
+                  },
+                  "disponible": {
+                    "type": "boolean"
+                  }
+                }
+              },
+              "examples": {
+                "T27": {
+                  "summary": "T27 ✅ Modifier la spécialité du technicien → 200",
+                  "value": {
+                    "specialite": "Électromécanique"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/techniciens/{id}/statut": {
+      "patch": {
+        "tags": [
+          "Utilisateurs"
+        ],
+        "summary": "Activer / désactiver un technicien",
+        "description": "**Rôle(s) :** RESPONSABLE\n\nUn compte désactivé est bloqué immédiatement, même avec un jeton encore valide.\n\n**Cas de test :** T76 (200)",
+        "operationId": "patchTechniciensIdStatut",
+        "responses": {
+          "200": {
+            "description": "Succès",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Utilisateur"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Données invalides",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié / jeton invalide / session invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Rôle insuffisant ou mot de passe provisoire à changer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Introuvable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "statut": {
+                    "type": "string",
+                    "enum": [
+                      "ACTIF",
+                      "DESACTIVE"
+                    ]
+                  }
+                },
+                "required": [
+                  "statut"
+                ]
+              },
+              "examples": {
+                "T76": {
+                  "summary": "T76 ✅ Désactiver le technicien → 200",
+                  "value": {
+                    "statut": "DESACTIVE"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/machines": {
+      "get": {
+        "tags": [
+          "Machines"
+        ],
+        "summary": "Liste du parc",
+        "description": "**Rôle(s) :** tous les rôles\n\n**Cas de test :** T04 (403), T08 (401), T29 (200)",
+        "operationId": "getMachines",
+        "responses": {
+          "200": {
+            "description": "Succès",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Machine"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié / jeton invalide / session invalide — T08 : Requête protégée sans jeton",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Rôle insuffisant ou mot de passe provisoire à changer — T04 : Accès bloqué tant que le mot de passe provisoire n'est pas changé",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "etat",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "NORMAL",
+                "ALERTE",
+                "PANNE",
+                "EN_MAINTENANCE",
+                "SANS_DONNEES"
+              ]
+            }
+          },
+          {
+            "name": "recherche",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Machines"
+        ],
+        "summary": "Déclarer une machine",
+        "description": "**Rôle(s) :** RESPONSABLE\n\nLe code sert d'identifiant MQTT de l'ESP32 : lettres, chiffres, - et _ uniquement.\n\n**Cas de test :** T30 (201), T31 (400), T38 (403)",
+        "operationId": "postMachines",
+        "responses": {
+          "201": {
+            "description": "Créé",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Machine"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Données invalides — T31 : Code machine invalide (caractère interdit)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié / jeton invalide / session invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Rôle insuffisant ou mot de passe provisoire à changer — T38 : Un technicien ne peut pas déclarer de machine",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9_-]+$",
+                    "maxLength": 40
+                  },
+                  "nom": {
+                    "type": "string",
+                    "maxLength": 120
+                  },
+                  "emplacement": {
+                    "type": "string",
+                    "maxLength": 120
+                  },
+                  "kitPredimaint": {
+                    "type": "boolean",
+                    "description": "Crée aussi les 4 capteurs de la carte ESP32 PrédiMaint (<code>-COURANT, -VIBRATION, -TEMPERATURE, -HUMIDITE) et leurs seuils par défaut"
+                  }
+                },
+                "required": [
+                  "code",
+                  "nom"
+                ]
+              },
+              "examples": {
+                "T30": {
+                  "summary": "T30 ✅ Déclarer une nouvelle machine → 201",
+                  "value": {
+                    "code": "M02",
+                    "nom": "Tour à commande numérique",
+                    "emplacement": "Atelier B"
+                  }
+                },
+                "T31": {
+                  "summary": "T31 ❌ Code machine invalide (caractère interdit) → 400",
+                  "value": {
+                    "code": "M 03/X",
+                    "nom": "Test"
+                  }
+                },
+                "T38": {
+                  "summary": "T38 ❌ Un technicien ne peut pas déclarer de machine → 403",
+                  "value": {
+                    "code": "M09",
+                    "nom": "Interdit"
+                  }
+                },
+                "KIT": {
+                  "summary": "Déclarer une machine équipée de la carte ESP32 PrédiMaint → 201",
+                  "value": {
+                    "code": "M03",
+                    "nom": "Compresseur 3",
+                    "emplacement": "Atelier C",
+                    "kitPredimaint": true
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/machines/{id}": {
+      "get": {
+        "tags": [
+          "Machines"
+        ],
+        "summary": "Détail d'une machine (capteurs + seuils)",
+        "description": "**Rôle(s) :** tous les rôles\n\n**Cas de test :** T39 (404), T42 (200)",
+        "operationId": "getMachinesId",
+        "responses": {
+          "200": {
+            "description": "Succès",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MachineDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié / jeton invalide / session invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Introuvable — T39 : Machine inexistante",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "Machines"
+        ],
+        "summary": "Modifier une machine",
+        "description": "**Rôle(s) :** RESPONSABLE\n\n**Cas de test :** T36 (200)",
+        "operationId": "patchMachinesId",
+        "responses": {
+          "200": {
+            "description": "Succès",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Machine"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Données invalides",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié / jeton invalide / session invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Rôle insuffisant ou mot de passe provisoire à changer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Introuvable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9_-]+$",
+                    "maxLength": 40
+                  },
+                  "nom": {
+                    "type": "string"
+                  },
+                  "emplacement": {
+                    "type": "string"
+                  }
+                }
+              },
+              "examples": {
+                "T36": {
+                  "summary": "T36 ✅ Modifier l'emplacement de M02 → 200",
+                  "value": {
+                    "emplacement": "Atelier C"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/machines/{id}/historique": {
+      "get": {
+        "tags": [
+          "Machines"
+        ],
+        "summary": "Historique (alertes + interventions)",
+        "description": "**Rôle(s) :** tous les rôles\n\n**Cas de test :** T60 (200)",
+        "operationId": "getMachinesIdHistorique",
+        "responses": {
+          "200": {
+            "description": "Succès",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Historique"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié / jeton invalide / session invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Introuvable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "début de période (30 derniers jours par défaut)"
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "fin de période (maintenant par défaut)"
+          }
+        ]
+      }
+    },
+    "/machines/{id}/mesures": {
+      "get": {
+        "tags": [
+          "Machines"
+        ],
+        "summary": "Mesures d'une machine",
+        "description": "**Rôle(s) :** tous les rôles\n\n**Cas de test :** T40 (200)",
+        "operationId": "getMachinesIdMesures",
+        "responses": {
+          "200": {
+            "description": "Succès",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Mesure"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié / jeton invalide / session invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Introuvable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "début de période (30 derniers jours par défaut)"
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "fin de période (maintenant par défaut)"
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "COURANT",
+                "VIBRATION",
+                "TEMPERATURE",
+                "HUMIDITE"
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 5000,
+              "default": 500
+            }
+          }
+        ]
+      }
+    },
+    "/machines/{id}/capteurs": {
+      "post": {
+        "tags": [
+          "Machines"
+        ],
+        "summary": "Ajouter un capteur",
+        "description": "**Rôle(s) :** RESPONSABLE\n\n**Cas de test :** T32 (201)",
+        "operationId": "postMachinesIdCapteurs",
+        "responses": {
+          "201": {
+            "description": "Créé",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Capteur"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Données invalides",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié / jeton invalide / session invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Rôle insuffisant ou mot de passe provisoire à changer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Introuvable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "identifiant": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9_-]+$",
+                    "maxLength": 60,
+                    "minLength": 3
+                  },
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "COURANT",
+                      "VIBRATION",
+                      "TEMPERATURE",
+                      "HUMIDITE"
+                    ]
+                  },
+                  "unite": {
+                    "type": "string",
+                    "description": "par défaut A (courant) ou mm/s (vibration)"
+                  }
+                },
+                "required": [
+                  "identifiant",
+                  "type"
+                ]
+              },
+              "examples": {
+                "T32": {
+                  "summary": "T32 ✅ Ajouter un capteur de vibration à M02 → 201",
+                  "value": {
+                    "identifiant": "M02-VIBRATION",
+                    "type": "VIBRATION"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/machines/{id}/seuils": {
+      "get": {
+        "tags": [
+          "Machines"
+        ],
+        "summary": "Seuils d'une machine",
+        "description": "**Rôle(s) :** tous les rôles\n\n**Cas de test :** T35 (200)",
+        "operationId": "getMachinesIdSeuils",
+        "responses": {
+          "200": {
+            "description": "Succès",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Seuil"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié / jeton invalide / session invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Introuvable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ]
+      }
+    },
+    "/machines/{id}/seuils/{typeMesure}": {
+      "put": {
+        "tags": [
+          "Machines"
+        ],
+        "summary": "Définir les seuils d'une mesure",
+        "description": "**Rôle(s) :** RESPONSABLE\n\n**Cas de test :** T33 (200), T34 (400)",
+        "operationId": "putMachinesIdSeuilsTypeMesure",
+        "responses": {
+          "200": {
+            "description": "Succès",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Seuil"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Données invalides — T34 : Seuil critique inférieur au seuil d'alerte",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié / jeton invalide / session invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Rôle insuffisant ou mot de passe provisoire à changer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Introuvable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "typeMesure",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "COURANT",
+                "VIBRATION",
+                "TEMPERATURE",
+                "HUMIDITE"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "seuilAlerte": {
+                    "type": "number",
+                    "exclusiveMinimum": true,
+                    "minimum": 0
+                  },
+                  "seuilCritique": {
+                    "type": "number",
+                    "description": "doit être supérieur au seuil d'alerte"
+                  }
+                },
+                "required": [
+                  "seuilAlerte",
+                  "seuilCritique"
+                ]
+              },
+              "examples": {
+                "T33": {
+                  "summary": "T33 ✅ Définir les seuils de vibration de M02 → 200",
+                  "value": {
+                    "seuilAlerte": 4.5,
+                    "seuilCritique": 7.1
+                  }
+                },
+                "T34": {
+                  "summary": "T34 ❌ Seuil critique inférieur au seuil d'alerte → 400",
+                  "value": {
+                    "seuilAlerte": 8,
+                    "seuilCritique": 5
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/capteurs/{id}": {
+      "patch": {
+        "tags": [
+          "Machines"
+        ],
+        "summary": "Modifier / désactiver un capteur",
+        "description": "**Rôle(s) :** RESPONSABLE\n\n**Cas de test :** T37 (200)",
+        "operationId": "patchCapteursId",
+        "responses": {
+          "200": {
+            "description": "Succès",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Capteur"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Données invalides",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié / jeton invalide / session invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Rôle insuffisant ou mot de passe provisoire à changer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Introuvable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "actif": {
+                    "type": "boolean"
+                  },
+                  "unite": {
+                    "type": "string"
+                  }
+                }
+              },
+              "examples": {
+                "T37": {
+                  "summary": "T37 ✅ Modifier un capteur (unité, activation) → 200",
+                  "value": {
+                    "unite": "mm/s",
+                    "actif": true
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/alertes": {
+      "get": {
+        "tags": [
+          "Alertes"
+        ],
+        "summary": "Liste des alertes",
+        "description": "**Rôle(s) :** tous les rôles\n\nLes alertes sont créées automatiquement par le backend quand une mesure MQTT dépasse un seuil.\n\n**Cas de test :** T41 (200)",
+        "operationId": "getAlertes",
+        "responses": {
+          "200": {
+            "description": "Succès",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Alerte"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié / jeton invalide / session invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "début de période (30 derniers jours par défaut)"
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "fin de période (maintenant par défaut)"
+          },
+          {
+            "name": "machineId",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "statut",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "OUVERTE",
+                "PRISE_EN_COMPTE",
+                "CLOTUREE"
+              ]
+            }
+          },
+          {
+            "name": "niveau",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "ALERTE",
+                "CRITIQUE"
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000,
+              "default": 200
+            }
+          }
+        ]
+      }
+    },
+    "/alertes/par-machine": {
+      "get": {
+        "tags": [
+          "Alertes"
+        ],
+        "summary": "Nombre d'alertes par machine",
+        "description": "**Rôle(s) :** tous les rôles\n\n**Cas de test :** T43 (200)",
+        "operationId": "getAlertesParMachine",
+        "responses": {
+          "200": {
+            "description": "Succès",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AlertesParMachine"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié / jeton invalide / session invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "début de période (30 derniers jours par défaut)"
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "fin de période (maintenant par défaut)"
+          }
+        ]
+      }
+    },
+    "/alertes/{id}": {
+      "get": {
+        "tags": [
+          "Alertes"
+        ],
+        "summary": "Détail d'une alerte",
+        "description": "**Rôle(s) :** tous les rôles\n\n**Cas de test :** T44 (200)",
+        "operationId": "getAlertesId",
+        "responses": {
+          "200": {
+            "description": "Succès",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Alerte"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié / jeton invalide / session invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Introuvable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ]
+      }
+    },
+    "/alertes/{id}/prise-en-compte": {
+      "patch": {
+        "tags": [
+          "Alertes"
+        ],
+        "summary": "Prendre en compte une alerte",
+        "description": "**Rôle(s) :** RESPONSABLE\n\n**Cas de test :** T45 (200)",
+        "operationId": "patchAlertesIdPriseEnCompte",
+        "responses": {
+          "200": {
+            "description": "Succès",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Alerte"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié / jeton invalide / session invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Rôle insuffisant ou mot de passe provisoire à changer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Introuvable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ]
+      }
+    },
+    "/alertes/{id}/cloture": {
+      "patch": {
+        "tags": [
+          "Alertes"
+        ],
+        "summary": "Clôturer une alerte",
+        "description": "**Rôle(s) :** RESPONSABLE\n\n**Cas de test :** T46 (400), T47 (200), T48 (409)",
+        "operationId": "patchAlertesIdCloture",
+        "responses": {
+          "200": {
+            "description": "Succès",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Alerte"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Données invalides — T46 : Clôture avec un commentaire trop court",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié / jeton invalide / session invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Rôle insuffisant ou mot de passe provisoire à changer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Introuvable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflit (doublon ou statut incompatible) — T48 : Clôturer une alerte déjà clôturée",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "commentaire": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 1000
+                  }
+                },
+                "required": [
+                  "commentaire"
+                ]
+              },
+              "examples": {
+                "T46": {
+                  "summary": "T46 ❌ Clôture avec un commentaire trop court → 400",
+                  "value": {
+                    "commentaire": "ok"
+                  }
+                },
+                "T47": {
+                  "summary": "T47 ✅ Clôturer l'alerte 2 (fausse alerte) → 200",
+                  "value": {
+                    "commentaire": "Pic de courant au démarrage, pas d'anomalie"
+                  }
+                },
+                "T48": {
+                  "summary": "T48 ❌ Clôturer une alerte déjà clôturée → 409",
+                  "value": {
+                    "commentaire": "Deuxième clôture"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/interventions": {
+      "get": {
+        "tags": [
+          "Interventions"
+        ],
+        "summary": "Liste des interventions",
+        "description": "**Rôle(s) :** tous les rôles (le technicien ne voit que les siennes)\n\n**Cas de test :** T53 (200), T77 (401)",
+        "operationId": "getInterventions",
+        "responses": {
+          "200": {
+            "description": "Succès",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Intervention"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié / jeton invalide / session invalide — T77 : Un compte désactivé est bloqué immédiatement",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Rôle insuffisant ou mot de passe provisoire à changer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "statut",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "A_AFFECTER",
+                "AFFECTEE",
+                "EN_COURS",
+                "CLOTUREE",
+                "ANNULEE"
+              ]
+            }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "PREVENTIVE",
+                "PREDICTIVE",
+                "CURATIVE"
+              ]
+            }
+          },
+          {
+            "name": "machineId",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "technicienId",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "enRetard",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ]
+            }
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Interventions"
+        ],
+        "summary": "Créer une intervention",
+        "description": "**Rôle(s) :** RESPONSABLE\n\nPREDICTIVE : alerteId + priorite + echeance (l'alerte passe PRISE_EN_COMPTE). PREVENTIVE : machineId + datePrevue. CURATIVE (panne) : machineId, priorité URGENTE par défaut.\n\n**Cas de test :** T49 (201), T51 (400), T63 (201), T65 (403)",
+        "operationId": "postInterventions",
+        "responses": {
+          "201": {
+            "description": "Créé",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Intervention"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Données invalides — T51 : Prédictive sans échéance",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié / jeton invalide / session invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Rôle insuffisant ou mot de passe provisoire à changer — T65 : Un technicien ne peut pas créer d'intervention",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "PREVENTIVE",
+                      "PREDICTIVE",
+                      "CURATIVE"
+                    ]
+                  },
+                  "machineId": {
+                    "type": "integer",
+                    "description": "obligatoire sauf PREDICTIVE"
+                  },
+                  "alerteId": {
+                    "type": "integer",
+                    "description": "obligatoire pour PREDICTIVE"
+                  },
+                  "description": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 2000
+                  },
+                  "priorite": {
+                    "type": "string",
+                    "enum": [
+                      "BASSE",
+                      "MOYENNE",
+                      "HAUTE",
+                      "URGENTE"
+                    ],
+                    "description": "obligatoire pour PREDICTIVE ; URGENTE par défaut pour CURATIVE"
+                  },
+                  "datePrevue": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "obligatoire pour PREVENTIVE"
+                  },
+                  "echeance": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "dans le futur ; obligatoire pour PREDICTIVE"
+                  },
+                  "debutPanne": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "CURATIVE : début de la panne (maintenant par défaut)"
+                  }
+                },
+                "required": [
+                  "type",
+                  "description"
+                ]
+              },
+              "examples": {
+                "T49": {
+                  "summary": "T49 ✅ Créer une intervention prédictive à partir de l'alerte 1 → 201",
+                  "value": {
+                    "type": "PREDICTIVE",
+                    "alerteId": 1,
+                    "description": "Vibration anormale : contrôler le roulement",
+                    "priorite": "HAUTE",
+                    "echeance": "2026-12-31T17:00:00.000Z"
+                  }
+                },
+                "T51": {
+                  "summary": "T51 ❌ Prédictive sans échéance → 400",
+                  "value": {
+                    "type": "PREDICTIVE",
+                    "alerteId": 1,
+                    "description": "Test sans échéance"
+                  }
+                },
+                "T63": {
+                  "summary": "T63 ✅ Déclarer une panne (intervention curative) sur M02 → 201",
+                  "value": {
+                    "type": "CURATIVE",
+                    "machineId": 2,
+                    "description": "Moteur bloqué, machine à l'arrêt"
+                  }
+                },
+                "T65": {
+                  "summary": "T65 ❌ Un technicien ne peut pas créer d'intervention → 403",
+                  "value": {
+                    "type": "CURATIVE",
+                    "machineId": 2,
+                    "description": "Interdit"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/interventions/{id}": {
+      "get": {
+        "tags": [
+          "Interventions"
+        ],
+        "summary": "Détail (avec compte rendu et alerte)",
+        "description": "**Rôle(s) :** tous les rôles\n\n**Cas de test :** T62 (200)",
+        "operationId": "getInterventionsId",
+        "responses": {
+          "200": {
+            "description": "Succès",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InterventionDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié / jeton invalide / session invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Introuvable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "Interventions"
+        ],
+        "summary": "Modifier une intervention non démarrée",
+        "description": "**Rôle(s) :** RESPONSABLE\n\n**Cas de test :** T50 (200), T59 (409)",
+        "operationId": "patchInterventionsId",
+        "responses": {
+          "200": {
+            "description": "Succès",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Intervention"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Données invalides",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié / jeton invalide / session invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Rôle insuffisant ou mot de passe provisoire à changer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Introuvable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflit (doublon ou statut incompatible) — T59 : Modifier une intervention clôturée",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "description": {
+                    "type": "string"
+                  },
+                  "priorite": {
+                    "type": "string",
+                    "enum": [
+                      "BASSE",
+                      "MOYENNE",
+                      "HAUTE",
+                      "URGENTE"
+                    ]
+                  },
+                  "datePrevue": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "echeance": {
+                    "type": "string",
+                    "format": "date-time"
+                  }
+                }
+              },
+              "examples": {
+                "T50": {
+                  "summary": "T50 ✅ Modifier la priorité avant affectation → 200",
+                  "value": {
+                    "priorite": "URGENTE"
+                  }
+                },
+                "T59": {
+                  "summary": "T59 ❌ Modifier une intervention clôturée → 409",
+                  "value": {
+                    "priorite": "BASSE"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/interventions/{id}/affecter": {
+      "patch": {
+        "tags": [
+          "Interventions"
+        ],
+        "summary": "Affecter à un technicien",
+        "description": "**Rôle(s) :** RESPONSABLE\n\n**Cas de test :** T52 (200)",
+        "operationId": "patchInterventionsIdAffecter",
+        "responses": {
+          "200": {
+            "description": "Succès",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Intervention"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Données invalides",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié / jeton invalide / session invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Rôle insuffisant ou mot de passe provisoire à changer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Introuvable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "technicienId": {
+                    "type": "integer"
+                  },
+                  "echeance": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "dans le futur"
+                  },
+                  "priorite": {
+                    "type": "string",
+                    "enum": [
+                      "BASSE",
+                      "MOYENNE",
+                      "HAUTE",
+                      "URGENTE"
+                    ]
+                  }
+                },
+                "required": [
+                  "technicienId",
+                  "echeance"
+                ]
+              },
+              "examples": {
+                "T52": {
+                  "summary": "T52 ✅ Affecter l'intervention 1 au technicien 4 → 200",
+                  "value": {
+                    "technicienId": 4,
+                    "echeance": "2026-12-31T17:00:00.000Z"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/interventions/{id}/annuler": {
+      "patch": {
+        "tags": [
+          "Interventions"
+        ],
+        "summary": "Annuler une intervention non démarrée",
+        "description": "**Rôle(s) :** RESPONSABLE\n\n**Cas de test :** T64 (200)",
+        "operationId": "patchInterventionsIdAnnuler",
+        "responses": {
+          "200": {
+            "description": "Succès",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Intervention"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié / jeton invalide / session invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Rôle insuffisant ou mot de passe provisoire à changer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Introuvable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ]
+      }
+    },
+    "/interventions/{id}/demarrer": {
+      "patch": {
+        "tags": [
+          "Interventions"
+        ],
+        "summary": "Démarrer (technicien affecté)",
+        "description": "**Rôle(s) :** TECHNICIEN\n\n**Cas de test :** T54 (200), T61 (409)",
+        "operationId": "patchInterventionsIdDemarrer",
+        "responses": {
+          "200": {
+            "description": "Succès",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Intervention"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié / jeton invalide / session invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Rôle insuffisant ou mot de passe provisoire à changer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Introuvable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflit (doublon ou statut incompatible) — T61 : Démarrer une intervention déjà clôturée",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ]
+      }
+    },
+    "/interventions/{id}/compte-rendu": {
+      "get": {
+        "tags": [
+          "Interventions"
+        ],
+        "summary": "Lire le compte rendu",
+        "description": "**Rôle(s) :** tous les rôles\n\n**Cas de test :** T58 (200)",
+        "operationId": "getInterventionsIdCompteRendu",
+        "responses": {
+          "200": {
+            "description": "Succès",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompteRendu"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié / jeton invalide / session invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Introuvable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Interventions"
+        ],
+        "summary": "Saisir / compléter le compte rendu",
+        "description": "**Rôle(s) :** TECHNICIEN\n\n**Cas de test :** T56 (200)",
+        "operationId": "putInterventionsIdCompteRendu",
+        "responses": {
+          "200": {
+            "description": "Succès",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompteRendu"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Données invalides",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié / jeton invalide / session invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Rôle insuffisant ou mot de passe provisoire à changer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Introuvable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "diagnostic": {
+                    "type": "string",
+                    "maxLength": 5000
+                  },
+                  "actions": {
+                    "type": "string",
+                    "maxLength": 5000
+                  },
+                  "piecesUtilisees": {
+                    "type": "string",
+                    "maxLength": 2000
+                  }
+                }
+              },
+              "examples": {
+                "T56": {
+                  "summary": "T56 ✅ Saisir le compte rendu → 200",
+                  "value": {
+                    "diagnostic": "Roulement usé",
+                    "actions": "Remplacement du roulement",
+                    "piecesUtilisees": "Roulement 6204 x1"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/interventions/{id}/cloturer": {
+      "patch": {
+        "tags": [
+          "Interventions"
+        ],
+        "summary": "Clôturer (diagnostic et actions obligatoires)",
+        "description": "**Rôle(s) :** TECHNICIEN\n\n**Cas de test :** T55 (400), T57 (200)",
+        "operationId": "patchInterventionsIdCloturer",
+        "responses": {
+          "200": {
+            "description": "Succès",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Intervention"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Données invalides — T55 : Clôture refusée sans compte rendu",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié / jeton invalide / session invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Rôle insuffisant ou mot de passe provisoire à changer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Introuvable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "resultat": {
+                    "type": "string",
+                    "enum": [
+                      "REMISE_EN_SERVICE",
+                      "NON_RESOLU"
+                    ]
+                  }
+                },
+                "required": [
+                  "resultat"
+                ]
+              },
+              "examples": {
+                "T55": {
+                  "summary": "T55 ❌ Clôture refusée sans compte rendu → 400",
+                  "value": {
+                    "resultat": "REMISE_EN_SERVICE"
+                  }
+                },
+                "T57": {
+                  "summary": "T57 ✅ Clôturer l'intervention → 200",
+                  "value": {
+                    "resultat": "REMISE_EN_SERVICE"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ordres-fabrication": {
+      "get": {
+        "tags": [
+          "Ordres de fabrication"
+        ],
+        "summary": "Liste des OF",
+        "description": "**Rôle(s) :** DIRECTEUR, RESPONSABLE\n\n**Cas de test :** T70 (200)",
+        "operationId": "getOrdresFabrication",
+        "responses": {
+          "200": {
+            "description": "Succès",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/OrdreFabrication"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié / jeton invalide / session invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Rôle insuffisant ou mot de passe provisoire à changer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "statut",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "PLANIFIE",
+                "EN_COURS",
+                "TERMINE"
+              ]
+            }
+          },
+          {
+            "name": "machineId",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "début de période (30 derniers jours par défaut)"
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "fin de période (maintenant par défaut)"
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Ordres de fabrication"
+        ],
+        "summary": "Créer un OF",
+        "description": "**Rôle(s) :** DIRECTEUR\n\n**Cas de test :** T66 (403), T67 (201)",
+        "operationId": "postOrdresFabrication",
+        "responses": {
+          "201": {
+            "description": "Créé",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrdreFabrication"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Données invalides",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié / jeton invalide / session invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Rôle insuffisant ou mot de passe provisoire à changer — T66 : Le responsable ne peut pas créer d'OF",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "numero": {
+                    "type": "string",
+                    "maxLength": 40
+                  },
+                  "machineId": {
+                    "type": "integer"
+                  },
+                  "produit": {
+                    "type": "string",
+                    "maxLength": 120
+                  },
+                  "quantitePrevue": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "tempsCycleS": {
+                    "type": "number",
+                    "description": "temps de cycle théorique (pour le TRS)"
+                  },
+                  "dateDebut": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "dateFin": {
+                    "type": "string",
+                    "format": "date-time"
+                  }
+                },
+                "required": [
+                  "numero",
+                  "machineId",
+                  "produit",
+                  "quantitePrevue"
+                ]
+              },
+              "examples": {
+                "T66": {
+                  "summary": "T66 ❌ Le responsable ne peut pas créer d'OF → 403",
+                  "value": {
+                    "numero": "OF-2026-001",
+                    "machineId": 2,
+                    "produit": "Axe Ø20",
+                    "quantitePrevue": 1000
+                  }
+                },
+                "T67": {
+                  "summary": "T67 ✅ Le directeur crée un ordre de fabrication → 201",
+                  "value": {
+                    "numero": "OF-2026-001",
+                    "machineId": 2,
+                    "produit": "Axe Ø20",
+                    "quantitePrevue": 1000,
+                    "tempsCycleS": 60,
+                    "dateDebut": "2026-11-02T08:00:00.000Z"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ordres-fabrication/{id}": {
+      "get": {
+        "tags": [
+          "Ordres de fabrication"
+        ],
+        "summary": "Détail d'un OF",
+        "description": "**Rôle(s) :** DIRECTEUR, RESPONSABLE\n\n**Cas de test :** T71 (200)",
+        "operationId": "getOrdresFabricationId",
+        "responses": {
+          "200": {
+            "description": "Succès",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrdreFabrication"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié / jeton invalide / session invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Rôle insuffisant ou mot de passe provisoire à changer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Introuvable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "Ordres de fabrication"
+        ],
+        "summary": "Modifier un OF (quantités, statut)",
+        "description": "**Rôle(s) :** DIRECTEUR\n\n**Cas de test :** T68 (200), T69 (400)",
+        "operationId": "patchOrdresFabricationId",
+        "responses": {
+          "200": {
+            "description": "Succès",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrdreFabrication"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Données invalides — T69 : Quantité rebutée supérieure à la quantité produite",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié / jeton invalide / session invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Rôle insuffisant ou mot de passe provisoire à changer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Introuvable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "produit": {
+                    "type": "string"
+                  },
+                  "quantitePrevue": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "quantiteProduite": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "quantiteRebutee": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "tempsCycleS": {
+                    "type": "number"
+                  },
+                  "dateDebut": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "dateFin": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "statut": {
+                    "type": "string",
+                    "enum": [
+                      "PLANIFIE",
+                      "EN_COURS",
+                      "TERMINE"
+                    ]
+                  }
+                }
+              },
+              "examples": {
+                "T68": {
+                  "summary": "T68 ✅ Saisir les quantités produites → 200",
+                  "value": {
+                    "quantiteProduite": 900,
+                    "quantiteRebutee": 45,
+                    "statut": "EN_COURS"
+                  }
+                },
+                "T69": {
+                  "summary": "T69 ❌ Quantité rebutée supérieure à la quantité produite → 400",
+                  "value": {
+                    "quantiteProduite": 10,
+                    "quantiteRebutee": 20
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/indicateurs": {
+      "get": {
+        "tags": [
+          "Indicateurs"
+        ],
+        "summary": "MTBF, MTTR, disponibilité, TRS",
+        "description": "**Rôle(s) :** DIRECTEUR, RESPONSABLE\n\n**Cas de test :** T72 (200), T74 (403)",
+        "operationId": "getIndicateurs",
+        "responses": {
+          "200": {
+            "description": "Succès",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Indicateurs"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié / jeton invalide / session invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Rôle insuffisant ou mot de passe provisoire à changer — T74 : Le technicien n'a pas accès aux indicateurs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "début de période (30 derniers jours par défaut)"
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "fin de période (maintenant par défaut)"
+          },
+          {
+            "name": "machineId",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ]
+      }
+    },
+    "/indicateurs/dashboard": {
+      "get": {
+        "tags": [
+          "Indicateurs"
+        ],
+        "summary": "Tableau de bord",
+        "description": "**Rôle(s) :** DIRECTEUR, RESPONSABLE\n\n**Cas de test :** T73 (200)",
+        "operationId": "getIndicateursDashboard",
+        "responses": {
+          "200": {
+            "description": "Succès",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Dashboard"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié / jeton invalide / session invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Rôle insuffisant ou mot de passe provisoire à changer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "début de période (30 derniers jours par défaut)"
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "fin de période (maintenant par défaut)"
+          }
+        ]
+      }
+    },
+    "/stream": {
+      "get": {
+        "tags": [
+          "Temps réel"
+        ],
+        "summary": "Flux d'événements (Server-Sent Events)",
+        "description": "**Rôle(s) :** connecté — jeton passé en paramètre token\n\nÀ ouvrir depuis le front : new EventSource(`/api/stream?token=${accessToken}`). Swagger ne peut pas afficher un flux continu : testez-le dans le navigateur.\n\n**Cas de test :** T75 (401)",
+        "operationId": "getStream",
+        "responses": {
+          "200": {
+            "description": "Succès",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié / jeton invalide / session invalide — T75 : Flux temps réel sans jeton",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erreur"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "token",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "accessToken (EventSource ne peut pas envoyer d'en-tête)"
+          }
+        ],
+        "security": []
+      }
+    },
+    "/alertes/{id}/fausse-alerte": {
+      "patch": {
+        "tags": [
+          "Release 3"
+        ],
+        "summary": "Marquer une fausse alerte (US-31)",
+        "description": "**Rôle(s) :** Responsable",
+        "operationId": "patch_alertes_id_fausse_alerte",
+        "responses": {
+          "200": {
+            "description": "Succès"
+          },
+          "400": {
+            "description": "Données invalides"
+          },
+          "401": {
+            "description": "Non authentifié"
+          },
+          "403": {
+            "description": "Rôle insuffisant"
+          },
+          "404": {
+            "description": "Introuvable"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "commentaire": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/machines/{id}/pannes": {
+      "post": {
+        "tags": [
+          "Release 3"
+        ],
+        "summary": "Déclarer une panne (US-29)",
+        "description": "**Rôle(s) :** Responsable, Technicien",
+        "operationId": "post_machines_id_pannes",
+        "responses": {
+          "201": {
+            "description": "Succès"
+          },
+          "400": {
+            "description": "Données invalides"
+          },
+          "401": {
+            "description": "Non authentifié"
+          },
+          "403": {
+            "description": "Rôle insuffisant"
+          },
+          "404": {
+            "description": "Introuvable"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "description": {
+                    "type": "string"
+                  },
+                  "debutPanne": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "priorite": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/machines/comparaison": {
+      "get": {
+        "tags": [
+          "Release 3"
+        ],
+        "summary": "Comparer plusieurs machines (US-32)",
+        "description": "**Rôle(s) :** Tous",
+        "operationId": "get_machines_comparaison",
+        "responses": {
+          "200": {
+            "description": "Succès"
+          },
+          "400": {
+            "description": "Données invalides"
+          },
+          "401": {
+            "description": "Non authentifié"
+          },
+          "403": {
+            "description": "Rôle insuffisant"
+          },
+          "404": {
+            "description": "Introuvable"
+          }
+        },
+        "parameters": [
+          {
+            "name": "ids",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/machines/{id}/cout": {
+      "patch": {
+        "tags": [
+          "Release 3"
+        ],
+        "summary": "Coût horaire d'arrêt (US-34)",
+        "description": "**Rôle(s) :** Directeur, Responsable",
+        "operationId": "patch_machines_id_cout",
+        "responses": {
+          "200": {
+            "description": "Succès"
+          },
+          "400": {
+            "description": "Données invalides"
+          },
+          "401": {
+            "description": "Non authentifié"
+          },
+          "403": {
+            "description": "Rôle insuffisant"
+          },
+          "404": {
+            "description": "Introuvable"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "coutHoraireArret": {
+                    "type": "number"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/machines/{id}/mesures-horaires": {
+      "get": {
+        "tags": [
+          "Release 3"
+        ],
+        "summary": "Mesures archivées (moyennes horaires) (US-40)",
+        "description": "**Rôle(s) :** Tous",
+        "operationId": "get_machines_id_mesures_horaires",
+        "responses": {
+          "200": {
+            "description": "Succès"
+          },
+          "400": {
+            "description": "Données invalides"
+          },
+          "401": {
+            "description": "Non authentifié"
+          },
+          "403": {
+            "description": "Rôle insuffisant"
+          },
+          "404": {
+            "description": "Introuvable"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/capteurs/{id}/calibration": {
+      "patch": {
+        "tags": [
+          "Release 3"
+        ],
+        "summary": "Calibrer un capteur (US-39)",
+        "description": "**Rôle(s) :** Responsable, Technicien",
+        "operationId": "patch_capteurs_id_calibration",
+        "responses": {
+          "200": {
+            "description": "Succès"
+          },
+          "400": {
+            "description": "Données invalides"
+          },
+          "401": {
+            "description": "Non authentifié"
+          },
+          "403": {
+            "description": "Rôle insuffisant"
+          },
+          "404": {
+            "description": "Introuvable"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "gain": {
+                    "type": "number"
+                  },
+                  "offset": {
+                    "type": "number"
+                  },
+                  "valeurReference": {
+                    "type": "number"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/capteurs/{id}/remplacer": {
+      "post": {
+        "tags": [
+          "Release 3"
+        ],
+        "summary": "Remplacer un capteur (US-37)",
+        "description": "**Rôle(s) :** Responsable",
+        "operationId": "post_capteurs_id_remplacer",
+        "responses": {
+          "201": {
+            "description": "Succès"
+          },
+          "400": {
+            "description": "Données invalides"
+          },
+          "401": {
+            "description": "Non authentifié"
+          },
+          "403": {
+            "description": "Rôle insuffisant"
+          },
+          "404": {
+            "description": "Introuvable"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "identifiant": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/interventions/{id}/photos": {
+      "get": {
+        "tags": [
+          "Release 3"
+        ],
+        "summary": "Photos d’une intervention (US-25)",
+        "description": "**Rôle(s) :** Tous",
+        "operationId": "get_interventions_id_photos",
+        "responses": {
+          "200": {
+            "description": "Succès"
+          },
+          "400": {
+            "description": "Données invalides"
+          },
+          "401": {
+            "description": "Non authentifié"
+          },
+          "403": {
+            "description": "Rôle insuffisant"
+          },
+          "404": {
+            "description": "Introuvable"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Release 3"
+        ],
+        "summary": "Joindre une photo (US-25)",
+        "description": "**Rôle(s) :** Responsable, Technicien",
+        "operationId": "post_interventions_id_photos",
+        "responses": {
+          "201": {
+            "description": "Succès"
+          },
+          "400": {
+            "description": "Données invalides"
+          },
+          "401": {
+            "description": "Non authentifié"
+          },
+          "403": {
+            "description": "Rôle insuffisant"
+          },
+          "404": {
+            "description": "Introuvable"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "photo": {
+                    "type": "string",
+                    "format": "binary"
+                  },
+                  "legende": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "photo"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/interventions/{id}/photos/{photoId}/fichier": {
+      "get": {
+        "tags": [
+          "Release 3"
+        ],
+        "summary": "Image (US-25)",
+        "description": "**Rôle(s) :** Tous",
+        "operationId": "get_interventions_id_photos_photoId_fichier",
+        "responses": {
+          "200": {
+            "description": "Succès"
+          },
+          "400": {
+            "description": "Données invalides"
+          },
+          "401": {
+            "description": "Non authentifié"
+          },
+          "403": {
+            "description": "Rôle insuffisant"
+          },
+          "404": {
+            "description": "Introuvable"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "photoId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ]
+      }
+    },
+    "/interventions/{id}/photos/{photoId}": {
+      "delete": {
+        "tags": [
+          "Release 3"
+        ],
+        "summary": "Supprimer une photo (US-25)",
+        "description": "**Rôle(s) :** Responsable, Technicien",
+        "operationId": "delete_interventions_id_photos_photoId",
+        "responses": {
+          "204": {
+            "description": "Succès"
+          },
+          "400": {
+            "description": "Données invalides"
+          },
+          "401": {
+            "description": "Non authentifié"
+          },
+          "403": {
+            "description": "Rôle insuffisant"
+          },
+          "404": {
+            "description": "Introuvable"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "photoId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ]
+      }
+    },
+    "/indicateurs/pannes": {
+      "get": {
+        "tags": [
+          "Release 3"
+        ],
+        "summary": "Durée et fréquence des pannes (US-16)",
+        "description": "**Rôle(s) :** Directeur, Responsable",
+        "operationId": "get_indicateurs_pannes",
+        "responses": {
+          "200": {
+            "description": "Succès"
+          },
+          "400": {
+            "description": "Données invalides"
+          },
+          "401": {
+            "description": "Non authentifié"
+          },
+          "403": {
+            "description": "Rôle insuffisant"
+          },
+          "404": {
+            "description": "Introuvable"
+          }
+        },
+        "parameters": [
+          {
+            "name": "grain",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "machineId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/rapports/maintenance": {
+      "get": {
+        "tags": [
+          "Release 3"
+        ],
+        "summary": "Rapport périodique (US-17)",
+        "description": "**Rôle(s) :** Directeur, Responsable",
+        "operationId": "get_rapports_maintenance",
+        "responses": {
+          "200": {
+            "description": "Succès"
+          },
+          "400": {
+            "description": "Données invalides"
+          },
+          "401": {
+            "description": "Non authentifié"
+          },
+          "403": {
+            "description": "Rôle insuffisant"
+          },
+          "404": {
+            "description": "Introuvable"
+          }
+        },
+        "parameters": [
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "periode",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/responsables/{id}/reinitialiser-mot-de-passe": {
+      "post": {
+        "tags": [
+          "Release 3"
+        ],
+        "summary": "Réinitialiser le mot de passe (US-35)",
+        "description": "**Rôle(s) :** Directeur",
+        "operationId": "post_responsables_id_reinitialiser_mot_de_passe",
+        "responses": {
+          "200": {
+            "description": "Succès"
+          },
+          "400": {
+            "description": "Données invalides"
+          },
+          "401": {
+            "description": "Non authentifié"
+          },
+          "403": {
+            "description": "Rôle insuffisant"
+          },
+          "404": {
+            "description": "Introuvable"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ]
+      }
+    },
+    "/techniciens/{id}/reinitialiser-mot-de-passe": {
+      "post": {
+        "tags": [
+          "Release 3"
+        ],
+        "summary": "Réinitialiser le mot de passe (US-35)",
+        "description": "**Rôle(s) :** Responsable",
+        "operationId": "post_techniciens_id_reinitialiser_mot_de_passe",
+        "responses": {
+          "200": {
+            "description": "Succès"
+          },
+          "400": {
+            "description": "Données invalides"
+          },
+          "401": {
+            "description": "Non authentifié"
+          },
+          "403": {
+            "description": "Rôle insuffisant"
+          },
+          "404": {
+            "description": "Introuvable"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ]
+      }
+    },
+    "/notifications/canaux": {
+      "get": {
+        "tags": [
+          "Release 3"
+        ],
+        "summary": "Canaux de notification (US-38)",
+        "description": "**Rôle(s) :** Directeur",
+        "operationId": "get_notifications_canaux",
+        "responses": {
+          "200": {
+            "description": "Succès"
+          },
+          "400": {
+            "description": "Données invalides"
+          },
+          "401": {
+            "description": "Non authentifié"
+          },
+          "403": {
+            "description": "Rôle insuffisant"
+          },
+          "404": {
+            "description": "Introuvable"
+          }
+        }
+      }
+    },
+    "/notifications/canaux/{canal}": {
+      "put": {
+        "tags": [
+          "Release 3"
+        ],
+        "summary": "Modifier un canal (US-38)",
+        "description": "**Rôle(s) :** Directeur",
+        "operationId": "put_notifications_canaux_canal",
+        "responses": {
+          "200": {
+            "description": "Succès"
+          },
+          "400": {
+            "description": "Données invalides"
+          },
+          "401": {
+            "description": "Non authentifié"
+          },
+          "403": {
+            "description": "Rôle insuffisant"
+          },
+          "404": {
+            "description": "Introuvable"
+          }
+        },
+        "parameters": [
+          {
+            "name": "canal",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "actif": {
+                    "type": "boolean"
+                  },
+                  "niveauMin": {
+                    "type": "string"
+                  },
+                  "destinataires": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/firmware/versions": {
+      "get": {
+        "tags": [
+          "Release 3"
+        ],
+        "summary": "Versions de firmware publiées (US-46)",
+        "description": "**Rôle(s) :** Directeur, Responsable",
+        "operationId": "get_firmware_versions",
+        "responses": {
+          "200": {
+            "description": "Succès"
+          },
+          "400": {
+            "description": "Données invalides"
+          },
+          "401": {
+            "description": "Non authentifié"
+          },
+          "403": {
+            "description": "Rôle insuffisant"
+          },
+          "404": {
+            "description": "Introuvable"
+          }
+        }
+      }
+    },
+    "/machines/{id}/firmware": {
+      "get": {
+        "tags": [
+          "Release 3"
+        ],
+        "summary": "Déploiements de firmware (US-46)",
+        "description": "**Rôle(s) :** Directeur, Responsable",
+        "operationId": "get_machines_id_firmware",
+        "responses": {
+          "200": {
+            "description": "Succès"
+          },
+          "400": {
+            "description": "Données invalides"
+          },
+          "401": {
+            "description": "Non authentifié"
+          },
+          "403": {
+            "description": "Rôle insuffisant"
+          },
+          "404": {
+            "description": "Introuvable"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Release 3"
+        ],
+        "summary": "Mettre à jour le firmware de la carte (US-46)",
+        "description": "**Rôle(s) :** Responsable",
+        "operationId": "post_machines_id_firmware",
+        "responses": {
+          "201": {
+            "description": "Succès"
+          },
+          "400": {
+            "description": "Données invalides"
+          },
+          "401": {
+            "description": "Non authentifié"
+          },
+          "403": {
+            "description": "Rôle insuffisant"
+          },
+          "404": {
+            "description": "Introuvable"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "version": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/firmware/telechargement/{jeton}/{fichier}": {
+      "get": {
+        "tags": [
+          "Release 3"
+        ],
+        "summary": "Téléchargement par la carte (US-46)",
+        "description": "**Rôle(s) :** Carte ESP32 (jeton de déploiement)",
+        "operationId": "get_firmware_telechargement_jeton_fichier",
+        "responses": {
+          "200": {
+            "description": "Succès"
+          },
+          "400": {
+            "description": "Données invalides"
+          },
+          "401": {
+            "description": "Non authentifié"
+          },
+          "403": {
+            "description": "Rôle insuffisant"
+          },
+          "404": {
+            "description": "Introuvable"
+          }
+        },
+        "parameters": [
+          {
+            "name": "jeton",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fichier",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": []
+      }
+    }
+  }
+}

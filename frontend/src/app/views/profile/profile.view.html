@@ -1,0 +1,25 @@
+<section class="profile-page">
+  <div class="page-heading">
+    <div><p class="eyebrow">MON COMPTE</p><h1>Profil utilisateur</h1><p class="subtitle">Consultez vos informations et sécurisez votre accès.</p></div>
+  </div>
+  <div class="profile-grid">
+    <article class="profile-card">
+      <div class="profile-avatar">{{(auth.user()?.prenom?.[0] ?? 'D') + (auth.user()?.nom?.[0] ?? 'P')}}</div>
+      <h2>{{auth.user()?.prenom}} {{auth.user()?.nom}}</h2>
+      <p class="role">{{auth.user() ? roleLabels[auth.user()!.role] : ''}}</p>
+      <div class="profile-details"><div><span>Email</span><strong>{{auth.user()?.email}}</strong></div><form class="phone-form" (ngSubmit)="saveTelephone()"><label>Téléphone<input name="telephone" type="tel" autocomplete="tel" placeholder="+216 XX XXX XXX" [(ngModel)]="telephone"></label><button class="secondary">Enregistrer</button></form>@if(profileMessage()){<div class="success" role="status">{{profileMessage()}}</div>}@if(profileError()){<div class="error" role="alert">{{profileError()}}</div>}<div><span>Statut</span><strong>{{auth.user()?.statut}}</strong></div></div>
+    </article>
+    <article class="password-card">
+      @if(auth.mustChangePassword){<div class="error" role="alert"><b>Première connexion :</b> remplacez le mot de passe provisoire pour accéder à l’application.</div>}
+      <p class="eyebrow">SÉCURITÉ</p><h2>Modifier le mot de passe</h2><p class="subtitle">Utilisez un mot de passe d’au moins 10 caractères, avec une minuscule, une majuscule et un chiffre.</p>
+      @if(message()){<div class="success" role="status">{{message()}}</div>}
+      @if(error()){<div class="error" role="alert">{{error()}}</div>}
+      <form (ngSubmit)="changePassword()">
+        <label>Mot de passe actuel<input name="ancien" type="password" [(ngModel)]="ancienMotDePasse" required autocomplete="current-password"></label>
+        <label>Nouveau mot de passe<input name="nouveau" type="password" [(ngModel)]="nouveauMotDePasse" required autocomplete="new-password"></label>
+        <label>Confirmer le nouveau mot de passe<input name="confirmation" type="password" [(ngModel)]="confirmation" required autocomplete="new-password"></label>
+        <button class="primary" [disabled]="loading">{{loading ? 'Modification…' : 'Modifier le mot de passe'}}</button>
+      </form>
+    </article>
+  </div>
+</section>

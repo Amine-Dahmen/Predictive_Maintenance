@@ -1,0 +1,86 @@
+# Intégration continue : chaque push et chaque pull request testent les 5 parties du projet.
+name: CI
+
+on:
+  push:
+    branches: [main, "feature/**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: backend } }
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: maintenance_iot_test
+          POSTGRES_USER: maint
+          POSTGRES_PASSWORD: maint_password
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U maint" --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: backend/package-lock.json }
+      - run: npm ci --ignore-scripts
+      - name: Tests unitaires
+        run: npm test
+      - name: Tests d'intégration (PostgreSQL réel)
+        run: npm run test:integration
+        env:
+          TEST_DATABASE_URL: postgres://maint:maint_password@localhost:5432/maintenance_iot_test
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: frontend } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: frontend/package-lock.json }
+      - run: npm ci --ignore-scripts
+      - run: npx ng build --configuration production
+      - run: npx ng test --watch=false
+
+  mobile:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: mobile } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with: { flutter-version: 3.50.0, channel: stable, cache: true }
+      - run: flutter pub get
+      - name: Analyse statique (les avertissements bloquent, pas les infos de dépréciation)
+        run: flutter analyze --no-fatal-infos
+      - run: flutter test
+
+  firmware:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: partie_embarque } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.13" }
+      - run: pip install pytest
+      - name: Logique du firmware testée sur PC (tampon Wi-Fi, alertes, mise à jour OTA)
+        run: python -m pytest -q tests_host
+
+  ml:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: ml } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.13", cache: pip, cache-dependency-path: ml/requirements-dev.txt }
+      - run: pip install -r requirements-dev.txt
+      - name: Variables, jeu d'entraînement et service (modèle versionné dans models/)
+        run: python -m pytest -q
