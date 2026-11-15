@@ -20,7 +20,7 @@ jobs:
     name: Secrets (gitleaks, tout l'historique)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with: { fetch-depth: 0 }
       - name: gitleaks
         run: |
@@ -31,7 +31,7 @@ jobs:
     name: SAST (Semgrep)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Semgrep (règles JavaScript, TypeScript, Python, Node.js, Dockerfile ; bloquant sur ERROR)
         run: |
           docker run --rm -v "$PWD:/src" -w /src semgrep/semgrep:1.184.0 semgrep scan \
@@ -48,7 +48,7 @@ jobs:
       matrix:
         language: [javascript-typescript, python]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: github/codeql-action/init@v3
         with: { languages: "${{ matrix.language }}", queries: security-extended }
       - uses: github/codeql-action/analyze@v3
@@ -57,7 +57,7 @@ jobs:
     name: Dépendances (npm audit, pip-audit)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
       - uses: actions/setup-python@v5
@@ -76,7 +76,7 @@ jobs:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/dependency-review-action@v4
         with: { fail-on-severity: high }
 
@@ -84,7 +84,7 @@ jobs:
     name: Configuration et Dockerfiles (Trivy)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Trivy (vulnérabilités corrigeables, mauvaises configurations, secrets ; bloquant sur HIGH/CRITICAL)
         run: |
           docker run --rm -v "$PWD:/src" aquasec/trivy:0.76.2 fs --quiet \
